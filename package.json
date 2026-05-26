@@ -1,0 +1,26 @@
+{
+  "name": "iot-colina-real",
+  "version": "1.0.0",
+  "description": "Sistema IoT de Inventario y Punto de Venta - Impresiones Colina Real",
+  "private": true,
+  "workspaces": [
+    "bridge-local",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "bridge": "npm run start --workspace=bridge-local",
+    "backend:dev": "npm run start:dev --workspace=backend",
+    "frontend:dev": "npm run start --workspace=frontend",
+    "backend:build": "npm run build --workspace=backend",
+    "frontend:build": "npm run build --workspace=frontend",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "author": "Impresiones Colina Real - PAS 2026",
+  "license": "MIT"
+}
