@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: colina-real-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: ohio
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: colina-real-db
+          property: connectionString
+      - key: API_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://colina-real.netlify.app
+    healthCheckPath: /api/products
+
+databases:
+  - name: colina-real-db
+    plan: free
+    region: ohio
+    databaseName: colina_real
+    user: colina_real_user

@@ -58,5 +58,5 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
-# Docker
-.dockerignore
+# Docker — solo ignorar el .dockerignore de la raíz, no los de subdirectorios
+/.dockerignore
