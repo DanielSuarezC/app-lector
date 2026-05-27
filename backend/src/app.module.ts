@@ -21,7 +21,7 @@ import { ScannerModule } from './scanner/scanner.module';
         ssl: config.get<string>('NODE_ENV') === 'production'
           ? { rejectUnauthorized: false }
           : false,
-        logging: config.get<string>('NODE_ENV') === 'development',
+        logging: false,
       }),
     }),
     ProductsModule,

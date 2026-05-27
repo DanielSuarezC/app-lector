@@ -10,8 +10,8 @@ const axios = require('axios');
 // Configuración desde variables de entorno
 // ---------------------------------------------------------------------------
 const CONFIG = {
-  comPort:         process.env.COM_PORT          || 'COM3',
-  baudRate:        parseInt(process.env.BAUD_RATE, 10) || 9600,
+  comPort:         process.env.COM_PORT          || null,   // null = auto-detectar
+  baudRate:        parseInt(process.env.BAUD_RATE, 10) || 115200,
   apiUrl:          process.env.API_URL            || 'http://localhost:3000',
   apiKey:          process.env.API_KEY            || '',
   bridgeId:        process.env.BRIDGE_ID          || 'bridge-local-01',
@@ -32,6 +32,54 @@ const log = {
   info:  (...a) => currentLevel >= 2 && console.info(`[INFO] `, ...a),
   debug: (...a) => currentLevel >= 3 && console.info(`[DEBUG]`, ...a),
 };
+
+// ---------------------------------------------------------------------------
+// Auto-detección del Arduino por VID/PID o fabricante
+// VIDs conocidos: 2341 = Arduino SA, 1a86 = CH340 (clones), 0403 = FTDI, 10c4 = CP210x
+// ---------------------------------------------------------------------------
+const ARDUINO_VENDOR_IDS = new Set(['2341', '1a86', '0403', '10c4', '1eaf']);
+const ARDUINO_MFR_RE = /arduino|ch340|ch341|ftdi|silicon\s*labs|qinheng/i;
+
+async function findArduinoPort() {
+  let ports;
+  try {
+    ports = await SerialPort.list();
+  } catch (err) {
+    log.error(`No se pudo listar puertos seriales: ${err.message}`);
+    return null;
+  }
+
+  if (ports.length === 0) {
+    log.warn('No se encontraron puertos seriales disponibles.');
+    return null;
+  }
+
+  log.debug(
+    `Puertos disponibles: ${ports
+      .map((p) => `${p.path} [VID=${p.vendorId || '?'} MFR=${p.manufacturer || '?'}]`)
+      .join(', ')}`
+  );
+
+  // 1. Buscar por vendorId conocido (más confiable)
+  for (const port of ports) {
+    const vid = (port.vendorId || '').toLowerCase().replace(/^0x/, '');
+    if (ARDUINO_VENDOR_IDS.has(vid)) {
+      log.info(`Arduino detectado por VID (${vid}): ${port.path}`);
+      return port.path;
+    }
+  }
+
+  // 2. Buscar por nombre de fabricante
+  for (const port of ports) {
+    if (ARDUINO_MFR_RE.test(port.manufacturer || '')) {
+      log.info(`Arduino detectado por fabricante (${port.manufacturer}): ${port.path}`);
+      return port.path;
+    }
+  }
+
+  log.warn('No se identificó ningún Arduino en los puertos disponibles.');
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Cola offline: FIFO, tamaño máximo configurable
@@ -70,9 +118,7 @@ async function postEvent(payload) {
 // ---------------------------------------------------------------------------
 async function handleArduinoMessage(line) {
   line = line.trim();
-  if (!line) {
-    return;
-  }
+  if (!line) return;
 
   let parsed;
   try {
@@ -87,13 +133,11 @@ async function handleArduinoMessage(line) {
     return;
   }
 
-  // Ignorar mensaje de boot (solo informativo)
   if (parsed.type === 'boot') {
     log.info(`Arduino listo. Firmware: ${parsed.firmware || 'desconocido'}`);
     return;
   }
 
-  // Enriquecer con timestamp real y bridgeId
   const payload = {
     ...parsed,
     ts: Math.floor(Date.now() / 1000),
@@ -106,9 +150,7 @@ async function handleArduinoMessage(line) {
     await postEvent(payload);
     log.info(`✓ Enviado [${payload.type}] ${payload.data ?? payload.value}`);
   } catch (err) {
-    const msg = err.response
-      ? `HTTP ${err.response.status}`
-      : err.message;
+    const msg = err.response ? `HTTP ${err.response.status}` : err.message;
     log.warn(`✗ Backend no disponible (${msg}). Encolando evento.`);
     enqueue(payload);
   }
@@ -118,9 +160,7 @@ async function handleArduinoMessage(line) {
 // Worker de reintentos: procesa la cola cada RETRY_INTERVAL_MS
 // ---------------------------------------------------------------------------
 async function flushQueue() {
-  if (offlineQueue.length === 0) {
-    return;
-  }
+  if (offlineQueue.length === 0) return;
 
   log.info(`Reintentando cola: ${offlineQueue.length} eventos pendientes`);
   const batch = offlineQueue.splice(0, offlineQueue.length);
@@ -130,19 +170,35 @@ async function flushQueue() {
       await postEvent(payload);
       log.info(`✓ Reintento exitoso [${payload.type}]`);
     } catch {
-      // Volver a encolar si sigue fallando
       enqueue(payload);
-      break; // Detener el batch si el backend sigue caído
+      break;
     }
   }
 }
 
 // ---------------------------------------------------------------------------
 // Inicialización del puerto serial
+// Orden de resolución del puerto:
+//   1. COM_PORT en .env (override manual)
+//   2. Auto-detección por VID/PID o fabricante
+//   3. Reintento en 10 s si no se encuentra ninguno
 // ---------------------------------------------------------------------------
-function startSerialPort() {
+async function startSerialPort() {
+  let portPath = CONFIG.comPort;
+
+  if (portPath) {
+    log.info(`Puerto forzado por variable de entorno: ${portPath}`);
+  } else {
+    portPath = await findArduinoPort();
+    if (!portPath) {
+      log.error('No se encontró ningún Arduino. Reintentando en 10 segundos...');
+      setTimeout(startSerialPort, 10000);
+      return;
+    }
+  }
+
   const port = new SerialPort({
-    path: CONFIG.comPort,
+    path: portPath,
     baudRate: CONFIG.baudRate,
     autoOpen: false,
   });
@@ -151,12 +207,12 @@ function startSerialPort() {
 
   port.open((err) => {
     if (err) {
-      log.error(`No se pudo abrir ${CONFIG.comPort}: ${err.message}`);
-      log.error('Verifica que el Arduino esté conectado y que COM_PORT sea correcto.');
-      setTimeout(startSerialPort, 5000); // Reintentar en 5s
+      log.error(`No se pudo abrir ${portPath}: ${err.message}`);
+      log.error('Verifica que el Arduino esté conectado y no esté ocupado por otro programa.');
+      setTimeout(startSerialPort, 5000);
       return;
     }
-    log.info(`Puerto serial abierto: ${CONFIG.comPort} @ ${CONFIG.baudRate} bps`);
+    log.info(`Puerto serial abierto: ${portPath} @ ${CONFIG.baudRate} bps`);
   });
 
   parser.on('data', (line) => {
@@ -177,12 +233,12 @@ function startSerialPort() {
 // Punto de entrada
 // ---------------------------------------------------------------------------
 log.info('=== Bridge Local — Impresiones Colina Real ===');
-log.info(`Puerto: ${CONFIG.comPort} | API: ${CONFIG.apiUrl} | Bridge: ${CONFIG.bridgeId}`);
+log.info(`API: ${CONFIG.apiUrl} | Bridge: ${CONFIG.bridgeId} | Baud: ${CONFIG.baudRate}`);
+log.info(CONFIG.comPort ? `Puerto: ${CONFIG.comPort} (fijo)` : 'Puerto: auto-detect');
 
 startSerialPort();
 setInterval(flushQueue, CONFIG.retryIntervalMs);
 
-// Graceful shutdown
 process.on('SIGINT', () => {
   log.info('Cerrando bridge...');
   if (offlineQueue.length > 0) {

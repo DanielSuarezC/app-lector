@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -11,8 +11,11 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTableModule } from '@angular/material/table';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { Subscription } from 'rxjs';
 
 import { ApiService } from '../services/api.service';
+import { ScannerService } from '../services/scanner.service';
 import { CartItem, Product } from '../models/product.model';
 
 @Component({
@@ -22,14 +25,24 @@ import { CartItem, Product } from '../models/product.model';
     CommonModule, FormsModule, CurrencyPipe,
     MatCardModule, MatButtonModule, MatIconModule, MatInputModule,
     MatFormFieldModule, MatSelectModule, MatDividerModule, MatSnackBarModule,
-    MatProgressSpinnerModule, MatTableModule,
+    MatProgressSpinnerModule, MatTableModule, MatTooltipModule,
   ],
   template: `
     <div class="page-container">
-      <h2 style="margin-bottom:16px">
-        <mat-icon style="vertical-align:middle;margin-right:8px">point_of_sale</mat-icon>
-        Punto de Venta
-      </h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+        <h2>
+          <mat-icon style="vertical-align:middle;margin-right:8px">point_of_sale</mat-icon>
+          Punto de Venta
+        </h2>
+        <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem"
+             [matTooltip]="scanner.bridgeOnline ? 'Lector enviando datos' : (scanner.connected$.value ? 'Bridge conectado, sin escaneos recientes' : 'Bridge desconectado')">
+          <span [style.color]="scanner.bridgeOnline ? '#4caf50' : (scanner.connected$.value ? '#ff9800' : '#f44336')"
+                style="font-size:22px; line-height:1">●</span>
+          <span style="color:#555">
+            {{ scanner.bridgeOnline ? 'Lector activo' : (scanner.connected$.value ? 'En espera' : 'Sin conexión') }}
+          </span>
+        </div>
+      </div>
 
       <div style="display:grid; grid-template-columns:1fr 380px; gap:24px">
         <!-- Panel izquierdo: búsqueda y carrito -->
@@ -37,6 +50,9 @@ import { CartItem, Product } from '../models/product.model';
           <mat-card>
             <mat-card-header>
               <mat-card-title>Escanear / Buscar producto</mat-card-title>
+              <mat-card-subtitle>
+                Presiona el botón del lector o escribe el código y pulsa Enter
+              </mat-card-subtitle>
             </mat-card-header>
             <mat-card-content style="padding-top:16px">
               <mat-form-field appearance="outline" style="width:100%">
@@ -45,12 +61,19 @@ import { CartItem, Product } from '../models/product.model';
                   [(ngModel)]="searchQuery"
                   (keyup.enter)="addByBarcode()"
                   placeholder="Escanea o escribe el código..."
-                  [disabled]="loading">
+                  [disabled]="loading"
+                  #barcodeInput>
                 <mat-icon matSuffix>qr_code_scanner</mat-icon>
               </mat-form-field>
               <button mat-raised-button color="primary" (click)="addByBarcode()" [disabled]="loading || !searchQuery">
                 <mat-icon>add_shopping_cart</mat-icon> Agregar
               </button>
+              @if (lastScannedCode) {
+                <div style="margin-top:8px; font-size:0.8rem; color:#666">
+                  <mat-icon style="font-size:14px; vertical-align:middle">qr_code</mat-icon>
+                  Último escaneo: <strong>{{ lastScannedCode }}</strong>
+                </div>
+              }
             </mat-card-content>
           </mat-card>
 
@@ -126,7 +149,9 @@ import { CartItem, Product } from '../models/product.model';
                 @if (processingPayment) {
                   <mat-spinner diameter="24" style="margin:auto"></mat-spinner>
                 } @else {
-                  <mat-icon>payments</mat-icon> Confirmar Venta
+                  <ng-container>
+                    <mat-icon>payments</mat-icon> Confirmar Venta
+                  </ng-container>
                 }
               </button>
 
@@ -166,9 +191,12 @@ import { CartItem, Product } from '../models/product.model';
     }
   `],
 })
-export class PosComponent implements OnInit {
+export class PosComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly snack = inject(MatSnackBar);
+  readonly scanner = inject(ScannerService);
+
+  private scanSub?: Subscription;
 
   cart: CartItem[] = [];
   searchQuery = '';
@@ -176,6 +204,7 @@ export class PosComponent implements OnInit {
   paymentMethod: 'cash' | 'card' | 'transfer' | 'nequi' = 'cash';
   loading = false;
   processingPayment = false;
+  lastScannedCode: string | null = null;
   lastTransaction: { transactionNumber: string; total: number; paymentMethod: string } | null = null;
 
   get subtotal(): number {
@@ -186,7 +215,17 @@ export class PosComponent implements OnInit {
     return Math.max(0, this.subtotal - this.discount);
   }
 
-  ngOnInit() {}
+  ngOnInit() {
+    this.scanSub = this.scanner.barcode$.subscribe((code) => {
+      this.lastScannedCode = code;
+      this.searchQuery = code;
+      this.addByBarcode();
+    });
+  }
+
+  ngOnDestroy() {
+    this.scanSub?.unsubscribe();
+  }
 
   addByBarcode() {
     const query = this.searchQuery.trim();

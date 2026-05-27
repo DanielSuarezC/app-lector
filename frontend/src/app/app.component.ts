@@ -1,10 +1,13 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
+import { MatTooltipModule } from '@angular/material/tooltip';
+
+import { ScannerService } from './services/scanner.service';
 
 @Component({
   selector: 'app-root',
@@ -12,7 +15,7 @@ import { MatListModule } from '@angular/material/list';
   imports: [
     RouterOutlet, RouterLink, RouterLinkActive,
     MatToolbarModule, MatButtonModule, MatIconModule,
-    MatSidenavModule, MatListModule,
+    MatSidenavModule, MatListModule, MatTooltipModule,
   ],
   template: `
     <mat-toolbar color="primary">
@@ -21,6 +24,23 @@ import { MatListModule } from '@angular/material/list';
       </button>
       <span style="margin-left:8px">Impresiones Colina Real</span>
       <span class="spacer"></span>
+
+      <!-- Indicador de estado del lector -->
+      <div style="display:flex; align-items:center; gap:6px; margin-right:16px; font-size:0.82rem; opacity:0.95"
+           [matTooltip]="scanner.bridgeOnline
+             ? 'Lector de código de barras activo'
+             : (scanner.connected$.value
+               ? 'Bridge conectado — sin actividad reciente del lector'
+               : 'Bridge desconectado del backend')">
+        <mat-icon style="font-size:18px; width:18px; height:18px"
+          [style.color]="scanner.bridgeOnline ? '#69f0ae' : (scanner.connected$.value ? '#fff176' : '#ff8a80')">
+          {{ scanner.bridgeOnline ? 'qr_code_scanner' : (scanner.connected$.value ? 'sensors_off' : 'link_off') }}
+        </mat-icon>
+        <span [style.color]="scanner.bridgeOnline ? '#69f0ae' : (scanner.connected$.value ? '#fff176' : '#ff8a80')">
+          {{ scanner.bridgeOnline ? 'Lector activo' : (scanner.connected$.value ? 'Sin señal' : 'Desconectado') }}
+        </span>
+      </div>
+
       <span style="font-size:0.85rem; opacity:0.8">Sistema IoT Inventario & POS</span>
     </mat-toolbar>
 
@@ -58,4 +78,6 @@ import { MatListModule } from '@angular/material/list';
     mat-nav-list a { margin: 4px 8px; border-radius: 4px; }
   `],
 })
-export class AppComponent {}
+export class AppComponent {
+  readonly scanner = inject(ScannerService);
+}

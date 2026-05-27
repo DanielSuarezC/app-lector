@@ -10,13 +10,23 @@ import { ScannerEventDto } from './dto/scanner-event.dto';
 export class ScannerService {
   private readonly logger = new Logger(ScannerService.name);
   readonly eventEmitter = new EventEmitter();
+  private lastEventAt: Date | null = null;
 
   constructor(
     @InjectRepository(ScannerEvent)
     private readonly eventRepo: Repository<ScannerEvent>,
   ) {}
 
+  getBridgeStatus() {
+    const threshold = 90_000;
+    const connected = this.lastEventAt
+      ? Date.now() - this.lastEventAt.getTime() < threshold
+      : false;
+    return { connected, lastEventAt: this.lastEventAt };
+  }
+
   async processEvent(dto: ScannerEventDto): Promise<ScannerEvent> {
+    this.lastEventAt = new Date();
     const entity = this.eventRepo.create(dto);
     const saved = await this.eventRepo.save(entity);
 

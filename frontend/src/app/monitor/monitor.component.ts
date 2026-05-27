@@ -7,8 +7,11 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatTableModule } from '@angular/material/table';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatBadgeModule } from '@angular/material/badge';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { Subscription } from 'rxjs';
 
 import { ApiService } from '../services/api.service';
+import { ScannerService } from '../services/scanner.service';
 import { ScannerEvent } from '../models/product.model';
 
 @Component({
@@ -17,7 +20,7 @@ import { ScannerEvent } from '../models/product.model';
   imports: [
     CommonModule, DatePipe,
     MatCardModule, MatButtonModule, MatIconModule, MatChipsModule,
-    MatTableModule, MatProgressBarModule, MatBadgeModule,
+    MatTableModule, MatProgressBarModule, MatBadgeModule, MatTooltipModule,
   ],
   template: `
     <div class="page-container">
@@ -30,16 +33,23 @@ import { ScannerEvent } from '../models/product.model';
         <!-- Estado del nodo -->
         <mat-card>
           <mat-card-header>
-            <mat-icon mat-card-avatar [style.color]="connected ? '#4caf50' : '#f44336'">
-              {{ connected ? 'wifi' : 'wifi_off' }}
+            <mat-icon mat-card-avatar
+              [style.color]="scanner.bridgeOnline ? '#4caf50' : (scanner.connected$.value ? '#ff9800' : '#f44336')">
+              {{ scanner.bridgeOnline ? 'sensors' : (scanner.connected$.value ? 'sensors_off' : 'wifi_off') }}
             </mat-icon>
-            <mat-card-title>Estado del Bridge</mat-card-title>
-            <mat-card-subtitle>SSE: {{ connected ? 'Conectado' : 'Desconectado' }}</mat-card-subtitle>
+            <mat-card-title>Estado del Nodo</mat-card-title>
+            <mat-card-subtitle>
+              @if (scanner.bridgeOnline) { Lector enviando datos }
+              @else if (scanner.connected$.value) { Bridge conectado — sin escaneos recientes }
+              @else { Bridge desconectado }
+            </mat-card-subtitle>
           </mat-card-header>
           <mat-card-content>
-            <div class="card-grid" style="margin-top:16px">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px">
               <div style="text-align:center">
-                <div style="font-size:2.5rem; font-weight:500; color:#3f51b5">{{ lastTemp ?? '—' }}</div>
+                <div style="font-size:2.5rem; font-weight:500; color:#3f51b5">
+                  {{ lastTemp !== null ? lastTemp : '—' }}
+                </div>
                 <div style="color:#666">°C Temperatura chip</div>
               </div>
               <div style="text-align:center">
@@ -47,6 +57,11 @@ import { ScannerEvent } from '../models/product.model';
                 <div style="color:#666">Códigos en sesión</div>
               </div>
             </div>
+            @if (scanner.lastEventAt) {
+              <div style="margin-top:12px; font-size:0.8rem; color:#888; text-align:center">
+                Último evento: {{ scanner.lastEventAt | date:'HH:mm:ss' }}
+              </div>
+            }
             @if (lastTemp !== null && lastTemp > 70) {
               <div style="background:#fff3e0; padding:12px; border-radius:4px; margin-top:16px; color:#e65100">
                 <mat-icon style="vertical-align:middle">thermostat</mat-icon>
@@ -61,7 +76,7 @@ import { ScannerEvent } from '../models/product.model';
           <mat-card-header>
             <mat-card-title>Eventos en tiempo real</mat-card-title>
             <span style="flex:1"></span>
-            <button mat-icon-button (click)="recentEvents=[]" matTooltip="Limpiar">
+            <button mat-icon-button (click)="recentEvents=[];barcodesReceived=0" matTooltip="Limpiar">
               <mat-icon>clear_all</mat-icon>
             </button>
           </mat-card-header>
@@ -118,14 +133,15 @@ import { ScannerEvent } from '../models/product.model';
 })
 export class MonitorComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
+  readonly scanner = inject(ScannerService);
 
-  connected = false;
   lastTemp: number | null = null;
   barcodesReceived = 0;
   recentEvents: ScannerEvent[] = [];
   temperatures: ScannerEvent[] = [];
 
-  private eventSource: EventSource | null = null;
+  private eventSub?: Subscription;
+  private tempSub?: Subscription;
 
   get tempValues(): number[] {
     return this.temperatures.map((t) => Number(t.value));
@@ -143,32 +159,27 @@ export class MonitorComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.api.getRecentEvents(20).subscribe({ next: (events) => { this.recentEvents = events; } });
-    this.api.getTemperatures(100).subscribe({ next: (temps) => { this.temperatures = temps; } });
-    this.connectSSE();
-  }
-
-  connectSSE() {
-    this.eventSource = this.api.getScannerStream();
-    this.eventSource.onopen = () => { this.connected = true; };
-    this.eventSource.onmessage = (msg) => {
-      try {
-        const event: ScannerEvent = JSON.parse(msg.data);
-        this.recentEvents = [event, ...this.recentEvents].slice(0, 50);
-        if (event.type === 'barcode') { this.barcodesReceived++; }
-        if (event.type === 'temp') {
-          this.lastTemp = Number(event.value);
-          this.temperatures = [event, ...this.temperatures].slice(0, 100);
+    this.api.getTemperatures(100).subscribe({
+      next: (temps) => {
+        this.temperatures = temps;
+        if (temps.length > 0) {
+          this.lastTemp = Number(temps[0].value);
         }
-      } catch { /* ignorar */ }
-    };
-    this.eventSource.onerror = () => {
-      this.connected = false;
-      this.eventSource?.close();
-      setTimeout(() => this.connectSSE(), 5000);
-    };
+      },
+    });
+
+    this.eventSub = this.scanner.event$.subscribe((event) => {
+      this.recentEvents = [event, ...this.recentEvents].slice(0, 50);
+      if (event.type === 'barcode') { this.barcodesReceived++; }
+      if (event.type === 'temp') {
+        this.lastTemp = Number(event.value);
+        this.temperatures = [event, ...this.temperatures].slice(0, 100);
+      }
+    });
   }
 
   ngOnDestroy() {
-    this.eventSource?.close();
+    this.eventSub?.unsubscribe();
+    this.tempSub?.unsubscribe();
   }
 }

@@ -37,6 +37,12 @@ export class ScannerController {
     return this.service.getRecentTemperatures(limit);
   }
 
+  @Get('status')
+  @ApiOperation({ summary: 'Estado de conectividad del bridge-local' })
+  getStatus() {
+    return this.service.getBridgeStatus();
+  }
+
   @Get('stream')
   @ApiOperation({ summary: 'Server-Sent Events: eventos del scanner en tiempo real' })
   stream(@Res() res: Response) {

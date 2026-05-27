@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -8,13 +8,15 @@ import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatTableModule } from '@angular/material/table';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatDialogModule, MatDialog } from '@angular/material/dialog';
+import { MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatBadgeModule } from '@angular/material/badge';
+import { Subscription } from 'rxjs';
 
 import { ApiService } from '../services/api.service';
+import { ScannerService } from '../services/scanner.service';
 import { Product } from '../models/product.model';
 
 @Component({
@@ -33,9 +35,20 @@ import { Product } from '../models/product.model';
           <mat-icon style="vertical-align:middle; margin-right:8px">inventory_2</mat-icon>
           Inventario
         </h2>
-        <button mat-raised-button color="primary" (click)="showForm = !showForm">
-          <mat-icon>add</mat-icon> Nuevo Producto
-        </button>
+        <div style="display:flex; align-items:center; gap:12px">
+          <!-- Estado del lector -->
+          <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem"
+               [matTooltip]="scanner.bridgeOnline ? 'Lector enviando datos' : (scanner.connected$.value ? 'Bridge conectado, sin escaneos recientes' : 'Bridge desconectado')">
+            <span [style.color]="scanner.bridgeOnline ? '#4caf50' : (scanner.connected$.value ? '#ff9800' : '#f44336')"
+                  style="font-size:22px; line-height:1">●</span>
+            <span style="color:#555">
+              {{ scanner.bridgeOnline ? 'Lector activo' : (scanner.connected$.value ? 'En espera' : 'Sin conexión') }}
+            </span>
+          </div>
+          <button mat-raised-button color="primary" (click)="openNewForm()">
+            <mat-icon>add</mat-icon> Nuevo Producto
+          </button>
+        </div>
       </div>
 
       <!-- Alertas de bajo stock -->
@@ -53,11 +66,17 @@ import { Product } from '../models/product.model';
         </mat-card>
       }
 
-      <!-- Formulario nuevo producto -->
+      <!-- Formulario nuevo/editar producto -->
       @if (showForm) {
         <mat-card style="margin-bottom:16px">
           <mat-card-header>
             <mat-card-title>{{ editingId ? 'Editar' : 'Nuevo' }} Producto</mat-card-title>
+            @if (!editingId) {
+              <mat-card-subtitle style="color:#3f51b5">
+                <mat-icon style="font-size:14px; vertical-align:middle">qr_code_scanner</mat-icon>
+                Presiona el botón del lector para auto-rellenar el código de barras
+              </mat-card-subtitle>
+            }
           </mat-card-header>
           <mat-card-content>
             <form [formGroup]="productForm" (ngSubmit)="saveProduct()"
@@ -65,6 +84,12 @@ import { Product } from '../models/product.model';
               <mat-form-field appearance="outline">
                 <mat-label>Código de barras</mat-label>
                 <input matInput formControlName="barcode">
+                @if (lastScannedCode && !editingId) {
+                  <mat-hint style="color:#3f51b5">
+                    Último escaneo: {{ lastScannedCode }}
+                  </mat-hint>
+                }
+                <mat-icon matSuffix>qr_code</mat-icon>
               </mat-form-field>
               <mat-form-field appearance="outline">
                 <mat-label>Nombre del producto</mat-label>
@@ -163,10 +188,13 @@ import { Product } from '../models/product.model';
     </div>
   `,
 })
-export class InventoryComponent implements OnInit {
+export class InventoryComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly snack = inject(MatSnackBar);
   private readonly fb = inject(FormBuilder);
+  readonly scanner = inject(ScannerService);
+
+  private scanSub?: Subscription;
 
   products: Product[] = [];
   lowStockProducts: Product[] = [];
@@ -175,6 +203,7 @@ export class InventoryComponent implements OnInit {
   saving = false;
   showForm = false;
   editingId: string | null = null;
+  lastScannedCode: string | null = null;
   displayedColumns = ['barcode', 'name', 'category', 'salePrice', 'stock', 'actions'];
 
   productForm = this.fb.group({
@@ -195,6 +224,22 @@ export class InventoryComponent implements OnInit {
 
   ngOnInit() {
     this.loadProducts();
+    this.scanSub = this.scanner.barcode$.subscribe((code) => {
+      this.lastScannedCode = code;
+      if (this.showForm && !this.editingId) {
+        this.productForm.patchValue({ barcode: code });
+      }
+    });
+  }
+
+  ngOnDestroy() {
+    this.scanSub?.unsubscribe();
+  }
+
+  openNewForm() {
+    this.editingId = null;
+    this.productForm.reset({ costPrice: 0, salePrice: 0, stock: 0 });
+    this.showForm = true;
   }
 
   loadProducts() {
