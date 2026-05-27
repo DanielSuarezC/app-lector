@@ -16,7 +16,7 @@
 // Scanner conectado a pines D2 (RX) y D3 (TX)
 SoftwareSerial scannerSerial(2, 3);
 
-static const unsigned long BAUD_SERIAL   = 9600UL;
+static const unsigned long BAUD_SERIAL   = 115200UL;
 static const unsigned long BAUD_SCANNER  = 9600UL;
 static const unsigned long TEMP_INTERVAL = 10000UL; // ms entre lecturas de temperatura
 
@@ -75,7 +75,7 @@ void sendBarcodeEvent(const String& barcode) {
 void sendTempEvent(float tempC) {
   unsigned long ts = millis() / 1000UL;
   // Formatear con 1 decimal sin sprintf para evitar overhead de memoria
-  int whole = (int)tempC;
+  int whole = (int)tempC; 
   int frac  = abs((int)((tempC - (float)whole) * 10.0f));
   Serial.print(F("{\"type\":\"temp\",\"value\":"));
   Serial.print(whole);
