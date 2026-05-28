@@ -9,6 +9,7 @@
     "frontend"
   ],
   "scripts": {
+    "build": "npm run build --workspace=frontend",
     "bridge": "npm run start --workspace=bridge-local",
     "backend:dev": "npm run start:dev --workspace=backend",
     "frontend:dev": "npm run start --workspace=frontend",
