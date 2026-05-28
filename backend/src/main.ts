@@ -24,16 +24,14 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // Swagger
-  if (process.env.NODE_ENV !== 'production') {
-    const config = new DocumentBuilder()
-      .setTitle('Colina Real IoT API')
-      .setDescription('API REST para el sistema IoT de inventario y POS de Impresiones Colina Real')
-      .setVersion('1.0')
-      .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'api-key')
-      .build();
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api/docs', app, document);
-  }
+  const config = new DocumentBuilder()
+    .setTitle('Colina Real IoT API')
+    .setDescription('API REST para el sistema IoT de inventario y POS de Impresiones Colina Real')
+    .setVersion('1.0')
+    .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'api-key')
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
 
   const port = parseInt(process.env.PORT || '3001', 10);
   await app.listen(port);
