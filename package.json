@@ -29,6 +29,7 @@
     "@angular/core": "17.3.12",
     "@nestjs/common": "^10.3.8",
     "@nestjs/core": "^10.3.8",
+    "caniuse-lite": "^1.0.30001782",
     "typescript": "5.4.5"
   },
   "overrides": {
