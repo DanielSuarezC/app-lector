@@ -1,7 +1,7 @@
 services:
   - type: web
     name: colina-real-backend
-    runtime: docker
+    env: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     plan: free
