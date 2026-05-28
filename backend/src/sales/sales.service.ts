@@ -46,6 +46,22 @@ export class SalesService {
       subtotal += itemSubtotal;
     }
 
+    // Procesar servicios rápidos (sin productId, sin descuento de inventario)
+    if (dto.quickItems?.length) {
+      for (const qi of dto.quickItems) {
+        const itemSubtotal = qi.unitPrice * qi.quantity;
+        itemSnapshots.push({
+          productId: 'quick-service',
+          barcode: '',
+          productName: qi.name,
+          quantity: qi.quantity,
+          unitPrice: qi.unitPrice,
+          subtotal: itemSubtotal,
+        });
+        subtotal += itemSubtotal;
+      }
+    }
+
     const discount = dto.discount ?? 0;
     const total = subtotal - discount;
 

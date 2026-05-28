@@ -34,9 +34,25 @@ export interface SaleItem {
 
 export interface CreateSaleDto {
   items: SaleItem[];
+  quickItems?: Array<{ name: string; unitPrice: number; quantity: number; category?: string }>;
   paymentMethod: 'cash' | 'card' | 'transfer' | 'nequi';
   discount?: number;
   notes?: string;
+}
+
+export interface QuickServiceItem {
+  serviceKey: string; // 'impresion' | 'fotocopia' | 'scanner' | 'transcripcion' | 'tramite'
+  name: string;
+  unitPrice: number;
+  quantity: number;
+}
+
+export interface ServiceCartItem {
+  type: 'service';
+  serviceKey: string;
+  name: string;
+  unitPrice: number;
+  quantity: number;
 }
 
 export interface Sale {

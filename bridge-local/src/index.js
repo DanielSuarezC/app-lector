@@ -12,7 +12,7 @@ const axios = require('axios');
 const CONFIG = {
   comPort:         process.env.COM_PORT          || null,   // null = auto-detectar
   baudRate:        parseInt(process.env.BAUD_RATE, 10) || 115200,
-  apiUrl:          process.env.API_URL            || 'http://localhost:3000',
+  apiUrl:          process.env.API_URL            || 'https://colina-real-backend.onrender.com',
   apiKey:          process.env.API_KEY            || '',
   bridgeId:        process.env.BRIDGE_ID          || 'bridge-local-01',
   retryIntervalMs: parseInt(process.env.RETRY_INTERVAL_MS, 10) || 30000,

@@ -16,7 +16,7 @@ import { Subscription } from 'rxjs';
 
 import { ApiService } from '../services/api.service';
 import { ScannerService } from '../services/scanner.service';
-import { CartItem, Product } from '../models/product.model';
+import { CartItem, Product, ServiceCartItem } from '../models/product.model';
 
 @Component({
   selector: 'app-pos',
@@ -57,7 +57,7 @@ import { CartItem, Product } from '../models/product.model';
             <mat-card-content style="padding-top:16px">
 
               <!-- Selector de modo -->
-              <div style="display:flex; gap:8px; margin-bottom:12px">
+              <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap">
                 <button mat-stroked-button
                   [color]="searchMode === 'barcode' ? 'primary' : ''"
                   (click)="setMode('barcode')">
@@ -67,6 +67,11 @@ import { CartItem, Product } from '../models/product.model';
                   [color]="searchMode === 'name' ? 'primary' : ''"
                   (click)="setMode('name')">
                   <mat-icon>search</mat-icon> Buscar por nombre
+                </button>
+                <button mat-stroked-button
+                  [color]="searchMode === 'service' ? 'accent' : ''"
+                  (click)="setMode('service')">
+                  <mat-icon>bolt</mat-icon> Servicios rápidos
                 </button>
               </div>
 
@@ -151,18 +156,69 @@ import { CartItem, Product } from '../models/product.model';
                   </div>
                 }
               }
+
+              <!-- Modo servicios rápidos -->
+              @if (searchMode === 'service') {
+                <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px">
+                  @for (svc of QUICK_SERVICES; track svc.key) {
+                    <button mat-raised-button
+                      [style.background-color]="selectedService?.key === svc.key ? svc.color : ''"
+                      [style.color]="selectedService?.key === svc.key ? '#fff' : svc.color"
+                      [style.border]="'2px solid ' + svc.color"
+                      style="height:72px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px"
+                      (click)="openServiceForm(svc)">
+                      <mat-icon [style.color]="selectedService?.key === svc.key ? '#fff' : svc.color">{{ svc.icon }}</mat-icon>
+                      <span style="font-size:0.75rem; font-weight:600">{{ svc.label }}</span>
+                    </button>
+                  }
+                </div>
+
+                @if (showServiceForm && selectedService) {
+                  <div style="border:1px solid #e0e0e0; border-radius:8px; padding:16px; background:#fafafa">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px">
+                      <mat-icon [style.color]="selectedService.color">{{ selectedService.icon }}</mat-icon>
+                      <strong style="font-size:1rem">{{ selectedService.label }}</strong>
+                    </div>
+                    <mat-form-field appearance="outline" style="width:100%">
+                      <mat-label>Descripción</mat-label>
+                      <input matInput [(ngModel)]="serviceName" placeholder="Ej: Impresión carta color">
+                    </mat-form-field>
+                    <div style="display:flex; gap:12px; align-items:flex-start">
+                      <mat-form-field appearance="outline" style="flex:1">
+                        <mat-label>Precio unitario (COP)</mat-label>
+                        <input matInput type="number" [(ngModel)]="servicePrice" min="1">
+                      </mat-form-field>
+                      <div style="display:flex; align-items:center; gap:8px; padding-top:12px">
+                        <button mat-icon-button (click)="serviceQty = serviceQty > 1 ? serviceQty - 1 : 1">
+                          <mat-icon>remove</mat-icon>
+                        </button>
+                        <strong style="min-width:24px; text-align:center">{{ serviceQty }}</strong>
+                        <button mat-icon-button (click)="serviceQty = serviceQty + 1">
+                          <mat-icon>add</mat-icon>
+                        </button>
+                      </div>
+                    </div>
+                    <button mat-raised-button color="accent" style="width:100%"
+                      [disabled]="!serviceName.trim() || servicePrice <= 0"
+                      (click)="addService()">
+                      <mat-icon>add_shopping_cart</mat-icon>
+                      Agregar al carrito — {{ servicePrice * serviceQty | currency:'COP':'symbol':'1.0-0' }}
+                    </button>
+                  </div>
+                }
+              }
             </mat-card-content>
           </mat-card>
 
           <!-- Carrito -->
           <mat-card style="margin-top:16px">
             <mat-card-header>
-              <mat-card-title>Carrito ({{ cart.length }} items)</mat-card-title>
+              <mat-card-title>Carrito ({{ cartTotalItems }} items)</mat-card-title>
             </mat-card-header>
             <mat-card-content>
-              @if (cart.length === 0) {
+              @if (cart.length === 0 && serviceCart.length === 0) {
                 <p style="color:#999; text-align:center; padding:24px 0">
-                  El carrito está vacío. Escanea o busca un producto para comenzar.
+                  El carrito está vacío. Escanea, busca un producto o agrega un servicio rápido.
                 </p>
               }
               @for (item of cart; track item.product.id) {
@@ -179,6 +235,31 @@ import { CartItem, Product } from '../models/product.model';
                       {{ item.product.salePrice * item.quantity | currency:'COP':'symbol':'1.0-0' }}
                     </span>
                     <button mat-icon-button color="warn" (click)="removeItem(item)">
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  </div>
+                </div>
+              }
+              @for (svc of serviceCart; track svc.serviceKey + svc.name) {
+                <div class="cart-item">
+                  <div>
+                    <div style="display:flex; align-items:center; gap:6px">
+                      <span [style.background]="getServiceColor(svc.serviceKey)"
+                            style="color:#fff; border-radius:4px; padding:2px 7px; font-size:0.7rem; font-weight:700">
+                        {{ getServiceLabel(svc.serviceKey) }}
+                      </span>
+                      <strong>{{ svc.name }}</strong>
+                    </div>
+                    <small style="color:#888">Servicio rápido</small>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <button mat-icon-button (click)="changeServiceQty(svc, -1)"><mat-icon>remove</mat-icon></button>
+                    <strong>{{ svc.quantity }}</strong>
+                    <button mat-icon-button (click)="changeServiceQty(svc, 1)"><mat-icon>add</mat-icon></button>
+                    <span style="min-width:100px; text-align:right">
+                      {{ svc.unitPrice * svc.quantity | currency:'COP':'symbol':'1.0-0' }}
+                    </span>
+                    <button mat-icon-button color="warn" (click)="removeServiceItem(svc)">
                       <mat-icon>delete</mat-icon>
                     </button>
                   </div>
@@ -213,15 +294,13 @@ import { CartItem, Product } from '../models/product.model';
                 <mat-label>Método de pago</mat-label>
                 <mat-select [(ngModel)]="paymentMethod">
                   <mat-option value="cash">Efectivo</mat-option>
-                  <mat-option value="card">Tarjeta</mat-option>
                   <mat-option value="nequi">Nequi</mat-option>
-                  <mat-option value="transfer">Transferencia</mat-option>
                 </mat-select>
               </mat-form-field>
 
               <button mat-raised-button color="accent"
                 style="width:100%; margin-top:8px; height:52px; font-size:1rem"
-                [disabled]="cart.length === 0 || processingPayment"
+                [disabled]="cartTotalItems === 0 || processingPayment"
                 (click)="confirmSale()">
                 @if (processingPayment) {
                   <mat-spinner diameter="24" style="margin:auto"></mat-spinner>
@@ -234,7 +313,7 @@ import { CartItem, Product } from '../models/product.model';
 
               <button mat-stroked-button color="warn"
                 style="width:100%;margin-top:8px"
-                [disabled]="cart.length === 0"
+                [disabled]="cartTotalItems === 0"
                 (click)="clearCart()">
                 <mat-icon>clear_all</mat-icon> Cancelar
               </button>
@@ -293,12 +372,21 @@ export class PosComponent implements OnInit, OnDestroy {
   private scanSub?: Subscription;
   private nameSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
+  readonly QUICK_SERVICES = [
+    { key: 'impresion',     label: 'Impresión',       icon: 'print',       color: '#1976d2', defaultPrice: 200  },
+    { key: 'fotocopia',     label: 'Fotocopia',        icon: 'content_copy', color: '#388e3c', defaultPrice: 100  },
+    { key: 'scanner',       label: 'Escáner',          icon: 'scanner',     color: '#7b1fa2', defaultPrice: 300  },
+    { key: 'transcripcion', label: 'Transcripción',    icon: 'keyboard',    color: '#f57c00', defaultPrice: 2000 },
+    { key: 'tramite',       label: 'Trámite Digital',  icon: 'assignment',  color: '#c62828', defaultPrice: 5000 },
+  ];
+
   cart: CartItem[] = [];
+  serviceCart: ServiceCartItem[] = [];
   searchQuery = '';
   nameQuery = '';
   nameResults: Product[] = [];
   nameSearching = false;
-  searchMode: 'barcode' | 'name' = 'barcode';
+  searchMode: 'barcode' | 'name' | 'service' = 'barcode';
   discount = 0;
   paymentMethod: 'cash' | 'card' | 'transfer' | 'nequi' = 'cash';
   loading = false;
@@ -306,12 +394,24 @@ export class PosComponent implements OnInit, OnDestroy {
   lastScannedCode: string | null = null;
   lastTransaction: { transactionNumber: string; total: number; paymentMethod: string } | null = null;
 
+  showServiceForm = false;
+  selectedService: typeof this.QUICK_SERVICES[0] | null = null;
+  serviceName = '';
+  serviceQty = 1;
+  servicePrice = 0;
+
   get subtotal(): number {
-    return this.cart.reduce((sum, item) => sum + item.product.salePrice * item.quantity, 0);
+    const productsTotal = this.cart.reduce((sum, item) => sum + item.product.salePrice * item.quantity, 0);
+    const servicesTotal = this.serviceCart.reduce((sum, s) => sum + s.unitPrice * s.quantity, 0);
+    return productsTotal + servicesTotal;
   }
 
   get total(): number {
     return Math.max(0, this.subtotal - this.discount);
+  }
+
+  get cartTotalItems(): number {
+    return this.cart.length + this.serviceCart.length;
   }
 
   ngOnInit() {
@@ -328,11 +428,13 @@ export class PosComponent implements OnInit, OnDestroy {
     if (this.nameSearchTimer) { clearTimeout(this.nameSearchTimer); }
   }
 
-  setMode(mode: 'barcode' | 'name') {
+  setMode(mode: 'barcode' | 'name' | 'service') {
     this.searchMode = mode;
     this.nameResults = [];
     this.nameQuery = '';
     this.searchQuery = '';
+    this.showServiceForm = false;
+    this.selectedService = null;
   }
 
   addByBarcode() {
@@ -402,17 +504,74 @@ export class PosComponent implements OnInit, OnDestroy {
     this.cart = this.cart.filter((i) => i !== item);
   }
 
+  openServiceForm(svc: typeof this.QUICK_SERVICES[0]) {
+    if (this.selectedService?.key === svc.key && this.showServiceForm) {
+      this.showServiceForm = false;
+      this.selectedService = null;
+      return;
+    }
+    this.selectedService = svc;
+    this.serviceName = svc.label;
+    this.servicePrice = svc.defaultPrice;
+    this.serviceQty = 1;
+    this.showServiceForm = true;
+  }
+
+  addService() {
+    if (!this.selectedService || !this.serviceName.trim() || this.servicePrice <= 0) { return; }
+    const existing = this.serviceCart.find(
+      (s) => s.serviceKey === this.selectedService!.key && s.name === this.serviceName.trim(),
+    );
+    if (existing) {
+      existing.quantity += this.serviceQty;
+    } else {
+      this.serviceCart.push({
+        type: 'service',
+        serviceKey: this.selectedService.key,
+        name: this.serviceName.trim(),
+        unitPrice: this.servicePrice,
+        quantity: this.serviceQty,
+      });
+    }
+    this.snack.open(`"${this.serviceName.trim()}" agregado al carrito`, '', { duration: 1500 });
+    this.showServiceForm = false;
+    this.selectedService = null;
+  }
+
+  removeServiceItem(item: ServiceCartItem) {
+    this.serviceCart = this.serviceCart.filter((s) => s !== item);
+  }
+
+  changeServiceQty(item: ServiceCartItem, delta: number) {
+    item.quantity = Math.max(1, item.quantity + delta);
+  }
+
+  getServiceColor(key: string): string {
+    return this.QUICK_SERVICES.find((s) => s.key === key)?.color ?? '#666';
+  }
+
+  getServiceLabel(key: string): string {
+    return this.QUICK_SERVICES.find((s) => s.key === key)?.label ?? key;
+  }
+
   clearCart() {
     this.cart = [];
+    this.serviceCart = [];
     this.discount = 0;
     this.lastTransaction = null;
   }
 
   confirmSale() {
-    if (this.cart.length === 0) { return; }
+    if (this.cartTotalItems === 0) { return; }
     this.processingPayment = true;
     this.api.createSale({
       items: this.cart.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
+      quickItems: this.serviceCart.map((s) => ({
+        name: s.name,
+        unitPrice: s.unitPrice,
+        quantity: s.quantity,
+        category: s.serviceKey,
+      })),
       paymentMethod: this.paymentMethod,
       discount: this.discount,
     }).subscribe({

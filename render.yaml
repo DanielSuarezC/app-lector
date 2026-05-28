@@ -5,6 +5,8 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     plan: free
+    region: ohio
+    healthCheckPath: /api/products
     envVars:
       - key: NODE_ENV
         value: production
@@ -17,4 +19,11 @@ services:
       - key: API_KEY
         generateValue: true
       - key: CORS_ORIGINS
-        sync: false
+        value: https://colina-real.netlify.app,http://localhost:4200
+
+databases:
+  - name: colina-real-db
+    plan: free
+    region: ohio
+    databaseName: colina_real
+    user: colina_real_user
