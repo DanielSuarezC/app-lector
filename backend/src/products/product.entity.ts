@@ -5,35 +5,35 @@ import {
 @Entity('products')
 export class Product {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id?: string;
 
-  @Column({ unique: true, length: 64 })
-  barcode: string;
+  @Column({ type: 'varchar', unique: true, length: 64, nullable: true })
+  barcode?: string | null;
 
   @Column({ length: 120 })
-  name: string;
+  name?: string;
 
   @Column({ length: 80, nullable: true })
-  category: string;
+  category?: string;
 
   @Column({ type: 'numeric', precision: 12, scale: 2 })
-  costPrice: number;
+  costPrice?: number;
 
   @Column({ type: 'numeric', precision: 12, scale: 2 })
-  salePrice: number;
+  salePrice?: number;
 
   @Column({ type: 'int', default: 0 })
-  stock: number;
+  stock?: number;
 
   @Column({ type: 'int', default: 5 })
-  minStock: number;
+  minStock?: number;
 
   @Column({ default: true })
-  active: boolean;
+  active?: boolean;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt?: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt?: Date;
 }

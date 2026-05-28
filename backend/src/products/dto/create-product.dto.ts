@@ -1,14 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsString, IsNotEmpty, IsNumber, IsPositive, IsOptional, IsInt, Min, MaxLength,
+  IsString, IsNotEmpty, IsNumber, IsPositive, IsOptional, IsInt, Min, MaxLength, MinLength,
 } from 'class-validator';
 
 export class CreateProductDto {
-  @ApiProperty({ example: '7700999012345', description: 'Código de barras único del producto' })
+  @ApiPropertyOptional({ example: '7700999012345', description: 'Código de barras único del producto (opcional)' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
+  @MinLength(1)
   @MaxLength(64)
-  barcode: string;
+  barcode?: string;
 
   @ApiProperty({ example: 'Lapicero BIC Azul x1', description: 'Nombre del producto' })
   @IsString()

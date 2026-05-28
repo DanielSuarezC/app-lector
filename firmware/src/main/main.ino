@@ -20,7 +20,15 @@ static const unsigned long BAUD_SERIAL   = 115200UL;
 static const unsigned long BAUD_SCANNER  = 9600UL;
 static const unsigned long TEMP_INTERVAL = 10000UL; // ms entre lecturas de temperatura
 
+// Offset de calibración del sensor interno del ATmega328P.
+// El valor 324 del datasheet varía por chip. Para calibrar:
+//   1. Mide la temperatura real del chip con un termómetro de contacto.
+//   2. Observa el campo "raw" en el JSON de telemetría.
+//   3. Calcula: TEMP_ADC_OFFSET = raw_observado - (temp_real_C × 1.22)
+static const int TEMP_ADC_OFFSET = 278;
+
 static unsigned long lastTempMs = 0;
+static int           lastRawAdc  = 0;  // guardado para incluirlo en telemetría
 
 // ---------------------------------------------------------------------------
 // Lectura de temperatura interna del ATmega328P
@@ -51,10 +59,14 @@ float readInternalTempC() {
   ADMUX = admuxPrev;
   ADCSRA = adcsraPrev;
 
+  lastRawAdc = raw;  // exponer para telemetría / recalibración
+
   // Ecuación de calibración (ATmega328P datasheet, sección 24.8)
-  // T(°C) = (ADC - 324.31) / 1.22
-  // Los valores 324.31 y 1.22 son típicos; varían ±10°C por unidad
-  return (float)(raw - 324) / 1.22f;
+  // T(°C) = (ADC - offset) / 1.22
+  // offset=324 es el valor típico del datasheet; varía por chip.
+  // Ajustar TEMP_ADC_OFFSET midiendo la temperatura real del chip con
+  // un termómetro y aplicando: offset = raw_leído - (temp_real × 1.22)
+  return (float)(raw - TEMP_ADC_OFFSET) / 1.22f;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +93,9 @@ void sendTempEvent(float tempC) {
   Serial.print(whole);
   Serial.print('.');
   Serial.print(frac);
-  Serial.print(F(",\"unit\":\"C\",\"ts\":"));
+  Serial.print(F(",\"unit\":\"C\",\"raw\":"));
+  Serial.print(lastRawAdc);
+  Serial.print(F(",\"ts\":"));
   Serial.print(ts);
   Serial.println(F("}"));
 }

@@ -1,8 +1,8 @@
 import {
-  Controller, Get, Post, Put, Delete, Param, Body,
+  Controller, Get, Post, Put, Delete, Param, Body, Query,
   HttpCode, HttpStatus, ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -33,6 +33,13 @@ export class ProductsController {
     return this.service.findLowStock();
   }
 
+  @Get('search')
+  @ApiOperation({ summary: 'Buscar productos por nombre (búsqueda parcial)' })
+  @ApiQuery({ name: 'q', description: 'Texto a buscar en el nombre del producto' })
+  searchByName(@Query('q') q: string) {
+    return this.service.searchByName(q ?? '');
+  }
+
   @Get('barcode/:barcode')
   @ApiOperation({ summary: 'Buscar producto por código de barras' })
   findByBarcode(@Param('barcode') barcode: string) {
@@ -49,6 +56,13 @@ export class ProductsController {
   @ApiOperation({ summary: 'Actualizar producto' })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateProductDto) {
     return this.service.update(id, dto);
+  }
+
+  @Post(':id/generate-barcode')
+  @ApiOperation({ summary: 'Generar código de barras EAN-13 para producto sin código' })
+  @ApiResponse({ status: 200, description: 'Producto con barcode generado' })
+  generateBarcode(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.generateBarcode(id);
   }
 
   @Delete(':id')

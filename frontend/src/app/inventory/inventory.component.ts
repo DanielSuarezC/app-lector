@@ -36,7 +36,6 @@ import { Product } from '../models/product.model';
           Inventario
         </h2>
         <div style="display:flex; align-items:center; gap:12px">
-          <!-- Estado del lector -->
           <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem"
                [matTooltip]="scanner.bridgeOnline ? 'Lector enviando datos' : (scanner.connected$.value ? 'Bridge conectado, sin escaneos recientes' : 'Bridge desconectado')">
             <span [style.color]="scanner.bridgeOnline ? '#4caf50' : (scanner.connected$.value ? '#ff9800' : '#f44336')"
@@ -74,7 +73,7 @@ import { Product } from '../models/product.model';
             @if (!editingId) {
               <mat-card-subtitle style="color:#3f51b5">
                 <mat-icon style="font-size:14px; vertical-align:middle">qr_code_scanner</mat-icon>
-                Presiona el botón del lector para auto-rellenar el código de barras
+                Código de barras opcional — usa el lector o déjalo vacío para generarlo luego
               </mat-card-subtitle>
             }
           </mat-card-header>
@@ -82,7 +81,7 @@ import { Product } from '../models/product.model';
             <form [formGroup]="productForm" (ngSubmit)="saveProduct()"
               style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
               <mat-form-field appearance="outline">
-                <mat-label>Código de barras</mat-label>
+                <mat-label>Código de barras <span style="color:#888; font-size:0.8em">(opcional)</span></mat-label>
                 <input matInput formControlName="barcode">
                 @if (lastScannedCode && !editingId) {
                   <mat-hint style="color:#3f51b5">
@@ -123,6 +122,58 @@ import { Product } from '../models/product.model';
         </mat-card>
       }
 
+      <!-- Panel generar código de barras -->
+      @if (generatingFor) {
+        <mat-card style="margin-bottom:16px; border-left:4px solid #ff9800">
+          <mat-card-header>
+            <mat-icon mat-card-avatar style="color:#ff9800">qr_code</mat-icon>
+            <mat-card-title>Generar código de barras</mat-card-title>
+            <mat-card-subtitle>{{ generatingFor.name }}</mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content>
+            @if (generatedBarcode) {
+              <div style="display:flex; align-items:center; gap:16px; padding:8px 0">
+                <mat-icon style="color:#4caf50; font-size:32px">check_circle</mat-icon>
+                <div>
+                  <div style="font-size:0.9rem; color:#555; margin-bottom:4px">Código EAN-13 generado:</div>
+                  <div style="font-size:1.5rem; font-weight:700; letter-spacing:4px; font-family:monospace">
+                    {{ generatedBarcode }}
+                  </div>
+                  <div style="font-size:0.8rem; color:#888; margin-top:4px">
+                    Formato EAN-13 — prefijo Colombia (770)
+                  </div>
+                </div>
+              </div>
+            } @else {
+              <p style="color:#666; margin-bottom:12px">
+                Se generará un código EAN-13 único (prefijo 770 Colombia) y se asignará permanentemente al producto.
+              </p>
+              <div style="display:flex; gap:8px">
+                <button mat-raised-button color="warn"
+                  [disabled]="generatingBarcode"
+                  (click)="doGenerateBarcode()">
+                  @if (generatingBarcode) {
+                    <mat-spinner diameter="20" style="margin:auto"></mat-spinner>
+                  } @else {
+                    <ng-container>
+                      <mat-icon>auto_fix_high</mat-icon> Generar código
+                    </ng-container>
+                  }
+                </button>
+                <button mat-stroked-button (click)="cancelGenerate()">Cancelar</button>
+              </div>
+            }
+            @if (generatedBarcode) {
+              <div style="margin-top:12px">
+                <button mat-stroked-button (click)="cancelGenerate()">
+                  <mat-icon>close</mat-icon> Cerrar
+                </button>
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
+
       <!-- Tabla de productos -->
       <mat-card>
         <mat-card-header>
@@ -142,7 +193,16 @@ import { Product } from '../models/product.model';
             <table mat-table [dataSource]="filteredProducts" style="width:100%">
               <ng-container matColumnDef="barcode">
                 <th mat-header-cell *matHeaderCellDef>Código</th>
-                <td mat-cell *matCellDef="let p">{{ p.barcode }}</td>
+                <td mat-cell *matCellDef="let p">
+                  @if (p.barcode) {
+                    <span style="font-family:monospace">{{ p.barcode }}</span>
+                  } @else {
+                    <span style="color:#ff9800; font-size:0.8rem">
+                      <mat-icon style="font-size:14px; vertical-align:middle">warning</mat-icon>
+                      Sin código
+                    </span>
+                  }
+                </td>
               </ng-container>
               <ng-container matColumnDef="name">
                 <th mat-header-cell *matHeaderCellDef>Nombre</th>
@@ -173,6 +233,12 @@ import { Product } from '../models/product.model';
                   <button mat-icon-button (click)="editProduct(p)" matTooltip="Editar">
                     <mat-icon>edit</mat-icon>
                   </button>
+                  @if (!p.barcode) {
+                    <button mat-icon-button color="warn" (click)="openGenerateBarcode(p)"
+                      matTooltip="Generar código de barras">
+                      <mat-icon>qr_code</mat-icon>
+                    </button>
+                  }
                   <button mat-icon-button color="warn" (click)="deleteProduct(p.id)" matTooltip="Eliminar">
                     <mat-icon>delete</mat-icon>
                   </button>
@@ -206,8 +272,12 @@ export class InventoryComponent implements OnInit, OnDestroy {
   lastScannedCode: string | null = null;
   displayedColumns = ['barcode', 'name', 'category', 'salePrice', 'stock', 'actions'];
 
+  generatingFor: Product | null = null;
+  generatingBarcode = false;
+  generatedBarcode: string | null = null;
+
   productForm = this.fb.group({
-    barcode: ['', Validators.required],
+    barcode: [''],
     name: ['', Validators.required],
     category: [''],
     costPrice: [0, [Validators.required, Validators.min(0)]],
@@ -218,7 +288,7 @@ export class InventoryComponent implements OnInit, OnDestroy {
   get filteredProducts(): Product[] {
     const q = this.filterText.toLowerCase();
     return q
-      ? this.products.filter((p) => p.name.toLowerCase().includes(q) || p.barcode.includes(q))
+      ? this.products.filter((p) => p.name.toLowerCase().includes(q) || (p.barcode ?? '').includes(q))
       : this.products;
   }
 
@@ -255,7 +325,7 @@ export class InventoryComponent implements OnInit, OnDestroy {
 
   editProduct(product: Product) {
     this.editingId = product.id;
-    this.productForm.patchValue(product);
+    this.productForm.patchValue({ ...product, barcode: product.barcode ?? '' });
     this.showForm = true;
   }
 
@@ -268,7 +338,11 @@ export class InventoryComponent implements OnInit, OnDestroy {
   saveProduct() {
     if (this.productForm.invalid) { return; }
     this.saving = true;
-    const dto = this.productForm.value as Parameters<typeof this.api.createProduct>[0];
+    const raw = this.productForm.value;
+    const dto = {
+      ...raw,
+      barcode: raw.barcode?.trim() || undefined,
+    } as Parameters<typeof this.api.createProduct>[0];
 
     const req = this.editingId
       ? this.api.updateProduct(this.editingId, dto)
@@ -293,6 +367,34 @@ export class InventoryComponent implements OnInit, OnDestroy {
     this.api.deleteProduct(id).subscribe({
       next: () => { this.snack.open('Producto eliminado', 'OK', { duration: 2500 }); this.loadProducts(); },
       error: () => this.snack.open('Error al eliminar', 'Cerrar', { duration: 3000 }),
+    });
+  }
+
+  openGenerateBarcode(product: Product) {
+    this.generatingFor = product;
+    this.generatedBarcode = null;
+  }
+
+  cancelGenerate() {
+    this.generatingFor = null;
+    this.generatedBarcode = null;
+  }
+
+  doGenerateBarcode() {
+    if (!this.generatingFor) { return; }
+    this.generatingBarcode = true;
+    this.api.generateBarcode(this.generatingFor.id).subscribe({
+      next: (updated) => {
+        this.generatedBarcode = updated.barcode;
+        const idx = this.products.findIndex((p) => p.id === updated.id);
+        if (idx >= 0) { this.products[idx] = updated; }
+        this.generatingBarcode = false;
+        this.snack.open('Código de barras generado exitosamente', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.snack.open('Error al generar el código', 'Cerrar', { duration: 3000 });
+        this.generatingBarcode = false;
+      },
     });
   }
 }

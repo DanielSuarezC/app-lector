@@ -25,6 +25,16 @@ export class ApiService {
     return this.http.get<Product>(`${this.base}/products/barcode/${barcode}`);
   }
 
+  searchProducts(query: string): Observable<Product[]> {
+    return this.http.get<Product[]>(`${this.base}/products/search`, {
+      params: { q: query },
+    });
+  }
+
+  generateBarcode(id: string): Observable<Product> {
+    return this.http.post<Product>(`${this.base}/products/${id}/generate-barcode`, {});
+  }
+
   createProduct(dto: CreateProductDto): Observable<Product> {
     return this.http.post<Product>(`${this.base}/products`, dto);
   }

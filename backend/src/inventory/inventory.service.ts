@@ -20,7 +20,7 @@ export class InventoryService {
     source = 'manual',
   ): Promise<InventoryMovement> {
     const product = await this.productsService.findOne(productId);
-    const stockBefore = product.stock;
+    const stockBefore = product.stock ?? 0;
     const stockAfter = stockBefore + dto.quantity;
 
     if (stockAfter < 0) {

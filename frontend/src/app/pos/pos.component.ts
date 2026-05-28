@@ -51,28 +51,105 @@ import { CartItem, Product } from '../models/product.model';
             <mat-card-header>
               <mat-card-title>Escanear / Buscar producto</mat-card-title>
               <mat-card-subtitle>
-                Presiona el botón del lector o escribe el código y pulsa Enter
+                Escanea, escribe el código y presiona Enter, o busca por nombre
               </mat-card-subtitle>
             </mat-card-header>
             <mat-card-content style="padding-top:16px">
-              <mat-form-field appearance="outline" style="width:100%">
-                <mat-label>Código de barras o nombre</mat-label>
-                <input matInput
-                  [(ngModel)]="searchQuery"
-                  (keyup.enter)="addByBarcode()"
-                  placeholder="Escanea o escribe el código..."
-                  [disabled]="loading"
-                  #barcodeInput>
-                <mat-icon matSuffix>qr_code_scanner</mat-icon>
-              </mat-form-field>
-              <button mat-raised-button color="primary" (click)="addByBarcode()" [disabled]="loading || !searchQuery">
-                <mat-icon>add_shopping_cart</mat-icon> Agregar
-              </button>
-              @if (lastScannedCode) {
-                <div style="margin-top:8px; font-size:0.8rem; color:#666">
-                  <mat-icon style="font-size:14px; vertical-align:middle">qr_code</mat-icon>
-                  Último escaneo: <strong>{{ lastScannedCode }}</strong>
-                </div>
+
+              <!-- Selector de modo -->
+              <div style="display:flex; gap:8px; margin-bottom:12px">
+                <button mat-stroked-button
+                  [color]="searchMode === 'barcode' ? 'primary' : ''"
+                  (click)="setMode('barcode')">
+                  <mat-icon>qr_code_scanner</mat-icon> Código de barras
+                </button>
+                <button mat-stroked-button
+                  [color]="searchMode === 'name' ? 'primary' : ''"
+                  (click)="setMode('name')">
+                  <mat-icon>search</mat-icon> Buscar por nombre
+                </button>
+              </div>
+
+              <!-- Modo código de barras -->
+              @if (searchMode === 'barcode') {
+                <mat-form-field appearance="outline" style="width:100%">
+                  <mat-label>Código de barras</mat-label>
+                  <input matInput
+                    [(ngModel)]="searchQuery"
+                    (keyup.enter)="addByBarcode()"
+                    placeholder="Escanea o escribe el código..."
+                    [disabled]="loading">
+                  <mat-icon matSuffix>qr_code_scanner</mat-icon>
+                </mat-form-field>
+                <button mat-raised-button color="primary"
+                  (click)="addByBarcode()" [disabled]="loading || !searchQuery">
+                  <mat-icon>add_shopping_cart</mat-icon> Agregar
+                </button>
+                @if (lastScannedCode) {
+                  <div style="margin-top:8px; font-size:0.8rem; color:#666">
+                    <mat-icon style="font-size:14px; vertical-align:middle">qr_code</mat-icon>
+                    Último escaneo: <strong>{{ lastScannedCode }}</strong>
+                  </div>
+                }
+              }
+
+              <!-- Modo búsqueda por nombre -->
+              @if (searchMode === 'name') {
+                <mat-form-field appearance="outline" style="width:100%">
+                  <mat-label>Nombre del producto</mat-label>
+                  <input matInput
+                    [(ngModel)]="nameQuery"
+                    (ngModelChange)="onNameChange()"
+                    (keyup.enter)="addFirstResult()"
+                    placeholder="Escribe al menos 2 letras..."
+                    [disabled]="loading">
+                  <mat-icon matSuffix>search</mat-icon>
+                </mat-form-field>
+
+                @if (nameSearching) {
+                  <div style="text-align:center; padding:8px">
+                    <mat-spinner diameter="24" style="margin:auto"></mat-spinner>
+                  </div>
+                }
+
+                @if (nameResults.length > 0) {
+                  <div class="name-results">
+                    @for (product of nameResults; track product.id) {
+                      <div class="name-result-item" (click)="addProductToCart(product)">
+                        <div>
+                          <strong>{{ product.name }}</strong>
+                          @if (product.category) {
+                            <span style="color:#888; font-size:0.8rem"> — {{ product.category }}</span>
+                          }
+                          <br>
+                          <small style="color:#888">
+                            @if (product.barcode) {
+                              {{ product.barcode }}
+                            } @else {
+                              <span style="color:#ff9800">Sin código</span>
+                            }
+                          </small>
+                        </div>
+                        <div style="text-align:right">
+                          <strong style="color:#3f51b5">
+                            {{ product.salePrice | currency:'COP':'symbol':'1.0-0' }}
+                          </strong>
+                          <br>
+                          <small [style.color]="product.stock <= product.minStock ? '#f44336' : '#4caf50'">
+                            Stock: {{ product.stock }}
+                          </small>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+
+                @if (nameQuery.length >= 2 && !nameSearching && nameResults.length === 0) {
+                  <div style="padding:12px; color:#999; text-align:center">
+                    <mat-icon>search_off</mat-icon>
+                    Sin resultados para "{{ nameQuery }}"
+                  </div>
+                }
               }
             </mat-card-content>
           </mat-card>
@@ -85,14 +162,14 @@ import { CartItem, Product } from '../models/product.model';
             <mat-card-content>
               @if (cart.length === 0) {
                 <p style="color:#999; text-align:center; padding:24px 0">
-                  El carrito está vacío. Escanea un producto para comenzar.
+                  El carrito está vacío. Escanea o busca un producto para comenzar.
                 </p>
               }
               @for (item of cart; track item.product.id) {
                 <div class="cart-item">
                   <div>
                     <strong>{{ item.product.name }}</strong><br>
-                    <small style="color:#666">{{ item.product.barcode }}</small>
+                    <small style="color:#666">{{ item.product.barcode ?? 'Sin código' }}</small>
                   </div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <button mat-icon-button (click)="changeQty(item, -1)"><mat-icon>remove</mat-icon></button>
@@ -189,6 +266,23 @@ import { CartItem, Product } from '../models/product.model';
       padding: 8px 0;
       border-bottom: 1px solid #eee;
     }
+    .name-results {
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .name-result-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid #f0f0f0;
+      transition: background 0.15s;
+    }
+    .name-result-item:last-child { border-bottom: none; }
+    .name-result-item:hover { background: #f5f5f5; }
   `],
 })
 export class PosComponent implements OnInit, OnDestroy {
@@ -197,9 +291,14 @@ export class PosComponent implements OnInit, OnDestroy {
   readonly scanner = inject(ScannerService);
 
   private scanSub?: Subscription;
+  private nameSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
   cart: CartItem[] = [];
   searchQuery = '';
+  nameQuery = '';
+  nameResults: Product[] = [];
+  nameSearching = false;
+  searchMode: 'barcode' | 'name' = 'barcode';
   discount = 0;
   paymentMethod: 'cash' | 'card' | 'transfer' | 'nequi' = 'cash';
   loading = false;
@@ -218,6 +317,7 @@ export class PosComponent implements OnInit, OnDestroy {
   ngOnInit() {
     this.scanSub = this.scanner.barcode$.subscribe((code) => {
       this.lastScannedCode = code;
+      this.searchMode = 'barcode';
       this.searchQuery = code;
       this.addByBarcode();
     });
@@ -225,6 +325,14 @@ export class PosComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.scanSub?.unsubscribe();
+    if (this.nameSearchTimer) { clearTimeout(this.nameSearchTimer); }
+  }
+
+  setMode(mode: 'barcode' | 'name') {
+    this.searchMode = mode;
+    this.nameResults = [];
+    this.nameQuery = '';
+    this.searchQuery = '';
   }
 
   addByBarcode() {
@@ -250,6 +358,40 @@ export class PosComponent implements OnInit, OnDestroy {
         this.loading = false;
       },
     });
+  }
+
+  onNameChange() {
+    if (this.nameSearchTimer) { clearTimeout(this.nameSearchTimer); }
+    const q = this.nameQuery.trim();
+    if (q.length < 2) {
+      this.nameResults = [];
+      return;
+    }
+    this.nameSearching = true;
+    this.nameSearchTimer = setTimeout(() => {
+      this.api.searchProducts(q).subscribe({
+        next: (results) => { this.nameResults = results; this.nameSearching = false; },
+        error: () => { this.nameResults = []; this.nameSearching = false; },
+      });
+    }, 300);
+  }
+
+  addFirstResult() {
+    if (this.nameResults.length > 0) {
+      this.addProductToCart(this.nameResults[0]);
+    }
+  }
+
+  addProductToCart(product: Product) {
+    const existing = this.cart.find((i) => i.product.id === product.id);
+    if (existing) {
+      existing.quantity++;
+    } else {
+      this.cart.push({ product, quantity: 1 });
+    }
+    this.nameQuery = '';
+    this.nameResults = [];
+    this.snack.open(`"${product.name}" agregado al carrito`, '', { duration: 1500 });
   }
 
   changeQty(item: CartItem, delta: number) {

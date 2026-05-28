@@ -29,16 +29,16 @@ export class SalesService {
 
     for (const item of dto.items) {
       const product = await this.productsService.findOne(item.productId);
-      if (product.stock < item.quantity) {
+      if ((product.stock ?? 0) < item.quantity) {
         throw new BadRequestException(
-          `Stock insuficiente para '${product.name}': tiene ${product.stock}, vende ${item.quantity}`,
+          `Stock insuficiente para '${product.name}': tiene ${product.stock ?? 0}, vende ${item.quantity}`,
         );
       }
       const itemSubtotal = Number(product.salePrice) * item.quantity;
       itemSnapshots.push({
-        productId: product.id,
-        barcode: product.barcode,
-        productName: product.name,
+        productId: product.id!,
+        barcode: product.barcode ?? '',
+        productName: product.name!,
         quantity: item.quantity,
         unitPrice: Number(product.salePrice),
         subtotal: itemSubtotal,

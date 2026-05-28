@@ -1,6 +1,6 @@
 export interface Product {
   id: string;
-  barcode: string;
+  barcode: string | null;
   name: string;
   category: string;
   costPrice: number;
@@ -13,7 +13,7 @@ export interface Product {
 }
 
 export interface CreateProductDto {
-  barcode: string;
+  barcode?: string;
   name: string;
   category?: string;
   costPrice: number;
