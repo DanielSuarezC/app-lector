@@ -95,9 +95,27 @@ export class ProductsService {
   }
 
   async findByBarcode(barcode: string): Promise<Product> {
-    const product = await this.repo.findOne({ where: { barcode }, relations: ['variants'] });
+    const product = await this.repo.findOne({ where: { barcode, active: true }, relations: ['variants'] });
     if (!product) throw new NotFoundException(`Producto con barcode '${barcode}' no encontrado`);
     return product;
+  }
+
+  async findVariantByBarcode(barcode: string): Promise<{ product: Product; variant: ProductVariant }> {
+    const variant = await this.variantRepo.findOne({ where: { barcode } });
+    if (!variant) throw new NotFoundException(`No se encontró variante con barcode '${barcode}'`);
+    const product = await this.findOne(variant.productId);
+    if (!product.active) throw new NotFoundException(`Producto con barcode '${barcode}' no encontrado`);
+    return { product, variant };
+  }
+
+  async findVariantById(id: string): Promise<ProductVariant> {
+    const variant = await this.variantRepo.findOne({ where: { id } });
+    if (!variant) throw new NotFoundException(`Variante '${id}' no encontrada`);
+    return variant;
+  }
+
+  async setVariantStock(variantId: string, stock: number): Promise<void> {
+    await this.variantRepo.update(variantId, { stock });
   }
 
   async findBySystemCode(systemCode: string): Promise<Product> {
@@ -110,6 +128,7 @@ export class ProductsService {
     if (!query || query.trim().length === 0) return Promise.resolve([]);
     return this.repo
       .createQueryBuilder('p')
+      .leftJoinAndSelect('p.variants', 'variants')
       .where('p.active = true AND LOWER(p.name) LIKE LOWER(:q)', { q: `%${query.trim()}%` })
       .orderBy('p.name', 'ASC')
       .take(20)

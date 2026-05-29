@@ -125,14 +125,21 @@ import { Product, Category, ItemType, SoldBy } from '../models/product.model';
                   }
                 </mat-form-field>
 
-                <mat-form-field appearance="outline">
-                  <mat-label>Código de barras (referencia, opcional)</mat-label>
-                  <input matInput formControlName="barcode">
-                  @if (lastScannedCode && !editingId) {
-                    <mat-hint style="color:#3f51b5">Último escaneo: {{ lastScannedCode }}</mat-hint>
-                  }
-                  <mat-icon matSuffix>qr_code</mat-icon>
-                </mat-form-field>
+                @if (optionGroups.length === 0) {
+                  <mat-form-field appearance="outline">
+                    <mat-label>Código de barras (referencia, opcional)</mat-label>
+                    <input matInput formControlName="barcode">
+                    @if (lastScannedCode && !editingId) {
+                      <mat-hint style="color:#3f51b5">Último escaneo: {{ lastScannedCode }}</mat-hint>
+                    }
+                    <mat-icon matSuffix>qr_code</mat-icon>
+                  </mat-form-field>
+                } @else {
+                  <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#e3f2fd;border-radius:4px;font-size:0.85rem;color:#1565c0;height:56px;box-sizing:border-box">
+                    <mat-icon style="font-size:18px;flex-shrink:0">info</mat-icon>
+                    Escanea el código directamente en la variante correspondiente
+                  </div>
+                }
 
                 <mat-form-field appearance="outline" style="grid-column:1/-1">
                   <mat-label>Descripción</mat-label>
@@ -197,8 +204,8 @@ import { Product, Category, ItemType, SoldBy } from '../models/product.model';
                 </div>
               }
 
-              <!-- Seguimiento de inventario (solo productos sin variantes) -->
-              @if (productForm.get('type')?.value === 'product' && optionGroups.length === 0) {
+              <!-- Seguimiento de inventario -->
+              @if (productForm.get('type')?.value === 'product') {
                 <div style="margin-bottom:16px">
                   <mat-slide-toggle formControlName="trackInventory" color="primary">
                     Seguir inventario
@@ -288,8 +295,15 @@ import { Product, Category, ItemType, SoldBy } from '../models/product.model';
                             </mat-form-field>
                             <mat-form-field appearance="outline" style="font-size:0.9rem">
                               <mat-label>Código de barras</mat-label>
-                              <input matInput formControlName="barcode">
-                              <mat-icon matSuffix style="font-size:16px">qr_code</mat-icon>
+                              <input matInput formControlName="barcode"
+                                (focus)="activeVariantBarcodeIndex.set({gi: gi, vi: vi})">
+                              <mat-icon matSuffix style="font-size:16px"
+                                [style.color]="activeVariantBarcodeIndex()?.gi === gi && activeVariantBarcodeIndex()?.vi === vi ? '#3f51b5' : 'inherit'">
+                                qr_code
+                              </mat-icon>
+                              @if (activeVariantBarcodeIndex()?.gi === gi && activeVariantBarcodeIndex()?.vi === vi) {
+                                <mat-hint style="color:#3f51b5">← Lector activo aquí</mat-hint>
+                              }
                             </mat-form-field>
                             <button mat-icon-button color="warn" type="button"
                               (click)="removeVariantValue(gi, vi)"
@@ -301,16 +315,18 @@ import { Product, Category, ItemType, SoldBy } from '../models/product.model';
 
                           <!-- Stock e info del valor -->
                           <div [formGroup]="asGroup(valCtrl)"
-                            style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:4px; align-items:center">
-                            <mat-form-field appearance="outline" style="font-size:0.85rem">
-                              <mat-label>Stock</mat-label>
-                              <input matInput type="number" formControlName="stock" min="0">
-                            </mat-form-field>
-                            <mat-form-field appearance="outline" style="font-size:0.85rem">
-                              <mat-label>Stock mínimo</mat-label>
-                              <input matInput type="number" formControlName="minStock" min="0">
-                            </mat-form-field>
-                            <div style="padding:4px 8px">
+                            style="display:flex; gap:8px; margin-top:4px; align-items:center; flex-wrap:wrap">
+                            @if (productForm.get('trackInventory')?.value) {
+                              <mat-form-field appearance="outline" style="font-size:0.85rem; flex:1; min-width:110px">
+                                <mat-label>Stock</mat-label>
+                                <input matInput type="number" formControlName="stock" min="0">
+                              </mat-form-field>
+                              <mat-form-field appearance="outline" style="font-size:0.85rem; flex:1; min-width:110px">
+                                <mat-label>Stock mínimo</mat-label>
+                                <input matInput type="number" formControlName="minStock" min="0">
+                              </mat-form-field>
+                            }
+                            <div style="padding:4px 8px; min-width:120px">
                               <div style="font-size:0.75rem; color:#388e3c; font-weight:600">
                                 Margen: {{ variantValueMargin(gi, vi) | number:'1.1-1' }}%
                               </div>
@@ -496,6 +512,7 @@ export class InventoryComponent implements OnInit, OnDestroy {
   editingId: string | null = null;
   currentSystemCode = '';
   lastScannedCode: string | null = null;
+  activeVariantBarcodeIndex = signal<{ gi: number; vi: number } | null>(null);
   displayedColumns = ['systemCode', 'type', 'name', 'salePrice', 'margin', 'stock', 'actions'];
 
   productForm = this.fb.group({
@@ -581,8 +598,17 @@ export class InventoryComponent implements OnInit, OnDestroy {
     this.loadCategories();
     this.scanSub = this.scanner.barcode$.subscribe((code) => {
       this.lastScannedCode = code;
-      if (this.showForm && !this.editingId) {
-        this.productForm.patchValue({ barcode: code });
+      if (this.showForm) {
+        const hasVariants = this.optionGroups.length > 0;
+        if (hasVariants) {
+          const idx = this.activeVariantBarcodeIndex();
+          if (idx !== null) {
+            const valCtrl = this.getValuesArray(this.optionGroups.at(idx.gi)).at(idx.vi);
+            valCtrl.get('barcode')?.setValue(code);
+          }
+        } else if (!this.editingId) {
+          this.productForm.patchValue({ barcode: code });
+        }
       }
     });
     this.categorySub = this.categorySearch$
@@ -635,6 +661,7 @@ export class InventoryComponent implements OnInit, OnDestroy {
     this.editingId = null;
     this.currentSystemCode = '';
     this.showForm = true;
+    this.activeVariantBarcodeIndex.set(null);
     this.optionGroups.clear();
     this.productForm.reset({
       type,
@@ -656,6 +683,7 @@ export class InventoryComponent implements OnInit, OnDestroy {
     this.editingId = p.id;
     this.currentSystemCode = p.systemCode ?? '';
     this.showForm = true;
+    this.activeVariantBarcodeIndex.set(null);
     this.optionGroups.clear();
     this.productForm.reset({
       type: p.type,
@@ -703,6 +731,7 @@ export class InventoryComponent implements OnInit, OnDestroy {
   cancelForm() {
     this.showForm = false;
     this.editingId = null;
+    this.activeVariantBarcodeIndex.set(null);
     this.optionGroups.clear();
   }
 
@@ -715,6 +744,10 @@ export class InventoryComponent implements OnInit, OnDestroy {
 
   removeOptionGroup(gi: number) {
     this.optionGroups.removeAt(gi);
+    const idx = this.activeVariantBarcodeIndex();
+    if (idx !== null && idx.gi >= gi) {
+      this.activeVariantBarcodeIndex.set(null);
+    }
   }
 
   addVariantValue(gi: number) {
@@ -723,6 +756,10 @@ export class InventoryComponent implements OnInit, OnDestroy {
 
   removeVariantValue(gi: number, vi: number) {
     this.getValuesArray(this.optionGroups.at(gi)).removeAt(vi);
+    const idx = this.activeVariantBarcodeIndex();
+    if (idx !== null && idx.gi === gi && idx.vi >= vi) {
+      this.activeVariantBarcodeIndex.set(null);
+    }
   }
 
   variantValueMargin(gi: number, vi: number): number {
@@ -755,22 +792,22 @@ export class InventoryComponent implements OnInit, OnDestroy {
             costPrice: v.costPrice ?? 0,
             salePrice: v.salePrice ?? 0,
             barcode: v.barcode || undefined,
-            stock: v.stock ?? 0,
-            minStock: v.minStock ?? 0,
+            stock: val.trackInventory ? (v.stock ?? 0) : 0,
+            minStock: val.trackInventory ? (v.minStock ?? 0) : 0,
           };
         });
       });
 
     const dto: any = {
       type: val.type,
-      barcode: val.barcode || undefined,
+      barcode: hasVariants ? undefined : (val.barcode || undefined),
       name: val.name,
       description: val.description || undefined,
       category: val.category || undefined,
       costPrice: hasVariants ? 0 : (val.costPrice ?? 0),
       salePrice: hasVariants ? 0 : (val.salePrice ?? 0),
       soldBy: val.soldBy,
-      trackInventory: hasVariants ? false : (val.type === 'service' ? false : val.trackInventory),
+      trackInventory: val.type === 'service' ? false : (val.trackInventory ?? true),
       stock: hasVariants ? 0 : (val.type === 'service' ? 0 : (val.trackInventory ? val.stock : 0)),
       minStock: hasVariants ? 0 : (val.type === 'service' ? 0 : (val.trackInventory ? val.minStock : 0)),
       variants: flatVariants,

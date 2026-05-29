@@ -5,7 +5,7 @@ import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import {
   Product, CreateProductDto, Sale, CreateSaleDto, DailySummary,
-  ScannerEvent, Category, PaymentMethod, SalesSummary,
+  ScannerEvent, Category, PaymentMethod, SalesSummary, VariantBarcodeResult,
 } from '../models/product.model';
 
 @Injectable({ providedIn: 'root' })
@@ -24,6 +24,10 @@ export class ApiService {
 
   getProductByBarcode(barcode: string): Observable<Product> {
     return this.http.get<Product>(`${this.base}/products/barcode/${barcode}`);
+  }
+
+  getProductByVariantBarcode(barcode: string): Observable<VariantBarcodeResult> {
+    return this.http.get<VariantBarcodeResult>(`${this.base}/products/variant-barcode/${barcode}`);
   }
 
   getProductBySystemCode(code: string): Observable<Product> {

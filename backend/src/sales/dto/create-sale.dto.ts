@@ -10,10 +10,21 @@ export class SaleItemDto {
   @IsUUID()
   productId: string;
 
+  @ApiPropertyOptional({ example: 'uuid-de-la-variante' })
+  @IsOptional()
+  @IsUUID()
+  variantId?: string;
+
   @ApiProperty({ example: 2 })
   @IsInt()
   @Min(1)
   quantity: number;
+
+  @ApiPropertyOptional({ example: 15000, description: 'Precio unitario (sobreescribe el almacenado, útil para precio manual)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitPrice?: number;
 }
 
 export class QuickServiceItemDto {
