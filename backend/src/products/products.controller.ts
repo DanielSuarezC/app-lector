@@ -46,6 +46,12 @@ export class ProductsController {
     return this.service.findByBarcode(barcode);
   }
 
+  @Get('variant-barcode/:barcode')
+  @ApiOperation({ summary: 'Buscar producto+variante por código de barras de variante' })
+  findByVariantBarcode(@Param('barcode') barcode: string) {
+    return this.service.findVariantByBarcode(barcode);
+  }
+
   @Get('code/:systemCode')
   @ApiOperation({ summary: 'Buscar producto por código de sistema' })
   findBySystemCode(@Param('systemCode') systemCode: string) {

@@ -16,7 +16,7 @@ import { Subscription } from 'rxjs';
 
 import { ApiService } from '../services/api.service';
 import { ScannerService } from '../services/scanner.service';
-import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/product.model';
+import { CartItem, Product, ProductVariant, ServiceCartItem, PaymentMethod } from '../models/product.model';
 
 @Component({
   selector: 'app-pos',
@@ -44,17 +44,21 @@ import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/pro
         </div>
       </div>
 
-      <!-- Teclado numérico para precio manual -->
+      <!-- Modal: teclado numérico para precio manual -->
       @if (showNumpad && numpadProduct) {
         <div style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center">
           <mat-card style="width:340px">
             <mat-card-header>
               <mat-icon mat-card-avatar style="color:#3f51b5">price_change</mat-icon>
               <mat-card-title>Ingresar precio</mat-card-title>
-              <mat-card-subtitle>{{ numpadProduct.name }}</mat-card-subtitle>
+              <mat-card-subtitle>
+                {{ numpadProduct.name }}
+                @if (numpadVariant) {
+                  <span style="color:#7b1fa2"> — {{ numpadVariant.optionName }}: {{ numpadVariant.optionValue }}</span>
+                }
+              </mat-card-subtitle>
             </mat-card-header>
             <mat-card-content>
-              <!-- Display del valor ingresado -->
               <div style="background:#f5f5f5; border-radius:8px; padding:16px 20px; margin-bottom:16px; text-align:right">
                 <div style="font-size:2.2rem; font-weight:700; font-family:monospace; min-height:3rem; color:#1a237e">
                   {{ numpadValue || '0' }}
@@ -64,8 +68,6 @@ import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/pro
                   <div style="color:#f44336; font-size:0.85rem; margin-top:4px">{{ numpadError }}</div>
                 }
               </div>
-
-              <!-- Teclas del teclado -->
               <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px">
                 @for (key of numpadKeys; track key) {
                   <button mat-stroked-button
@@ -87,6 +89,58 @@ import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/pro
               </button>
               <button mat-stroked-button style="height:48px" (click)="cancelNumpad()">
                 Cancelar
+              </button>
+            </mat-card-actions>
+          </mat-card>
+        </div>
+      }
+
+      <!-- Modal: selector de variantes -->
+      @if (showVariantPicker && variantPickerProduct) {
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px">
+          <mat-card style="width:540px; max-width:95vw; max-height:90vh; overflow-y:auto">
+            <mat-card-header>
+              <mat-icon mat-card-avatar style="color:#7b1fa2">tune</mat-icon>
+              <mat-card-title>Seleccionar variante</mat-card-title>
+              <mat-card-subtitle>{{ variantPickerProduct.name }}</mat-card-subtitle>
+            </mat-card-header>
+            <mat-card-content style="padding-top:8px">
+              @for (group of variantPickerGroups; track group.name) {
+                <div style="margin-bottom:16px">
+                  <div style="font-weight:600; color:#555; margin-bottom:8px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px">
+                    {{ group.name }}
+                  </div>
+                  <div style="display:flex; flex-wrap:wrap; gap:8px">
+                    @for (variant of group.variants; track variant.id) {
+                      <button
+                        style="min-width:130px; height:auto; padding:10px 14px; display:flex; flex-direction:column; align-items:flex-start; gap:2px; border-radius:8px; border:2px solid; background:#fff; cursor:pointer; transition:all 0.15s"
+                        [style.border-color]="variantPickerProduct.trackInventory && (variant.stock ?? 0) === 0 ? '#ef9a9a' : '#ce93d8'"
+                        [style.opacity]="variantPickerProduct.trackInventory && (variant.stock ?? 0) === 0 ? '0.55' : '1'"
+                        [disabled]="variantPickerProduct.trackInventory && (variant.stock ?? 0) === 0"
+                        (click)="selectVariant(variant)">
+                        <span style="font-weight:700; font-size:1rem; color:#212121">{{ variant.optionValue }}</span>
+                        @if (!variant.salePrice || +variant.salePrice === 0) {
+                          <span style="font-size:0.78rem; color:#ff9800">Sin precio fijo</span>
+                        } @else {
+                          <span style="font-size:0.78rem; color:#3f51b5; font-weight:600">
+                            {{ variant.salePrice | currency:'COP':'symbol':'1.0-0' }}
+                          </span>
+                        }
+                        @if (variantPickerProduct.trackInventory) {
+                          <span style="font-size:0.73rem"
+                            [style.color]="(variant.stock ?? 0) === 0 ? '#e53935' : '#43a047'">
+                            Stock: {{ variant.stock ?? 0 }}
+                          </span>
+                        }
+                      </button>
+                    }
+                  </div>
+                </div>
+              }
+            </mat-card-content>
+            <mat-card-actions style="padding:0 16px 16px">
+              <button mat-stroked-button (click)="cancelVariantPicker()">
+                <mat-icon>close</mat-icon> Cancelar
               </button>
             </mat-card-actions>
           </mat-card>
@@ -175,17 +229,30 @@ import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/pro
                           @if (product.category) {
                             <span style="color:#888; font-size:0.8rem"> — {{ product.category }}</span>
                           }
+                          @if (product.variants?.length) {
+                            <span style="color:#7b1fa2; font-size:0.78rem; margin-left:6px">
+                              <mat-icon style="font-size:12px;vertical-align:middle">tune</mat-icon>
+                              {{ product.variants!.length }} variante(s)
+                            </span>
+                          }
                           <br>
                           <small style="color:#888">
                             @if (product.barcode) {
                               {{ product.barcode }}
+                            } @else if (product.variants?.length) {
+                              <span style="color:#7b1fa2">Códigos por variante</span>
                             } @else {
                               <span style="color:#ff9800">Sin código</span>
                             }
                           </small>
                         </div>
                         <div style="text-align:right">
-                          @if (!product.salePrice || +product.salePrice === 0) {
+                          @if (product.variants?.length) {
+                            <strong style="color:#7b1fa2; font-size:0.85rem">
+                              <mat-icon style="font-size:14px;vertical-align:middle">tune</mat-icon>
+                              Elegir variante
+                            </strong>
+                          } @else if (!product.salePrice || +product.salePrice === 0) {
                             <strong style="color:#ff9800; font-size:0.85rem">Sin precio fijo</strong>
                           } @else {
                             <strong style="color:#3f51b5">
@@ -193,9 +260,11 @@ import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/pro
                             </strong>
                           }
                           <br>
-                          <small [style.color]="product.stock <= product.minStock ? '#f44336' : '#4caf50'">
-                            Stock: {{ product.stock }}
-                          </small>
+                          @if (!product.variants?.length) {
+                            <small [style.color]="product.stock <= product.minStock ? '#f44336' : '#4caf50'">
+                              Stock: {{ product.stock }}
+                            </small>
+                          }
                         </div>
                       </div>
                     }
@@ -274,18 +343,26 @@ import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/pro
                   El carrito está vacío. Escanea, busca un producto o agrega un servicio rápido.
                 </p>
               }
-              @for (item of cart; track item.product.id + item.product.salePrice) {
+              @for (item of cart; track cartItemKey(item)) {
                 <div class="cart-item">
-                  <div>
-                    <strong>{{ item.product.name }}</strong><br>
-                    <small style="color:#666">{{ item.product.barcode ?? 'Sin código' }}</small>
+                  <div style="flex:1; min-width:0">
+                    <strong>{{ item.product.name }}</strong>
+                    @if (item.variant) {
+                      <span style="color:#7b1fa2; font-size:0.85rem">
+                        — {{ item.variant.optionName }}: {{ item.variant.optionValue }}
+                      </span>
+                    }
+                    <br>
+                    <small style="color:#666">
+                      {{ (item.variant ? item.variant.barcode : item.product.barcode) ?? 'Sin código' }}
+                    </small>
                   </div>
-                  <div style="display:flex;align-items:center;gap:8px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
                     <button mat-icon-button (click)="changeQty(item, -1)"><mat-icon>remove</mat-icon></button>
                     <strong>{{ item.quantity }}</strong>
                     <button mat-icon-button (click)="changeQty(item, 1)"><mat-icon>add</mat-icon></button>
                     <span style="min-width:100px; text-align:right">
-                      {{ item.product.salePrice * item.quantity | currency:'COP':'symbol':'1.0-0' }}
+                      {{ itemPrice(item) * item.quantity | currency:'COP':'symbol':'1.0-0' }}
                     </span>
                     <button mat-icon-button color="warn" (click)="removeItem(item)">
                       <mat-icon>delete</mat-icon>
@@ -335,7 +412,7 @@ import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/pro
               </div>
               <mat-form-field appearance="outline" style="width:100%;margin-top:8px">
                 <mat-label>Descuento (COP)</mat-label>
-                <input matInput type="number" [(ngModel)]="discount" min="0">
+                <input matInput type="number" [(ngModel)]="discount" (ngModelChange)="onDiscountChange()" min="0">
               </mat-form-field>
               <mat-divider></mat-divider>
               <div style="display:flex;justify-content:space-between;padding:12px 0;font-size:1.2rem">
@@ -401,6 +478,7 @@ import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/pro
       align-items: center;
       padding: 8px 0;
       border-bottom: 1px solid #eee;
+      gap: 8px;
     }
     .name-results {
       border: 1px solid #e0e0e0;
@@ -463,11 +541,28 @@ export class PosComponent implements OnInit, OnDestroy {
 
   showNumpad = false;
   numpadProduct: Product | null = null;
+  numpadVariant: ProductVariant | null = null;
   numpadValue = '';
   numpadError = '';
 
+  showVariantPicker = false;
+  variantPickerProduct: Product | null = null;
+  variantPickerGroups: { name: string; variants: ProductVariant[] }[] = [];
+
+  itemPrice(item: CartItem): number {
+    return item.variant ? Number(item.variant.salePrice) : Number(item.product.salePrice);
+  }
+
+  cartItemKey(item: CartItem): string {
+    return item.product.id + (item.variant?.id ?? '');
+  }
+
+  onDiscountChange() {
+    this.saveCart();
+  }
+
   get subtotal(): number {
-    const productsTotal = this.cart.reduce((sum, item) => sum + item.product.salePrice * item.quantity, 0);
+    const productsTotal = this.cart.reduce((sum, item) => sum + this.itemPrice(item) * item.quantity, 0);
     const servicesTotal = this.serviceCart.reduce((sum, s) => sum + s.unitPrice * s.quantity, 0);
     return productsTotal + servicesTotal;
   }
@@ -481,6 +576,7 @@ export class PosComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.loadCartFromStorage();
     this.api.getPaymentMethods().subscribe({
       next: (pms) => {
         this.paymentMethods.set(pms);
@@ -491,6 +587,7 @@ export class PosComponent implements OnInit, OnDestroy {
     });
     this.scanSub = this.scanner.barcode$.subscribe((code) => {
       this.lastScannedCode = code;
+      if (this.showNumpad || this.showVariantPicker || this.loading) return;
       this.searchMode = 'barcode';
       this.searchQuery = code;
       this.addByBarcode();
@@ -513,11 +610,14 @@ export class PosComponent implements OnInit, OnDestroy {
 
   addByBarcode() {
     const query = this.searchQuery.trim();
-    if (!query) { return; }
+    if (!query) return;
 
-    const existing = this.cart.find((i) => i.product.barcode === query);
+    const existing = this.cart.find((i) =>
+      i.variant ? i.variant.barcode === query : i.product.barcode === query,
+    );
     if (existing) {
       existing.quantity++;
+      this.saveCart();
       this.searchQuery = '';
       return;
     }
@@ -527,15 +627,30 @@ export class PosComponent implements OnInit, OnDestroy {
       next: (product: Product) => {
         this.searchQuery = '';
         this.loading = false;
+        if (product.variants?.length) {
+          this.openVariantPicker(product);
+          return;
+        }
         if (!product.salePrice || Number(product.salePrice) === 0) {
-          this.openNumpad({ ...product });
+          this.openNumpadForProduct(product);
           return;
         }
         this.cart.push({ product, quantity: 1 });
+        this.saveCart();
       },
       error: () => {
-        this.snack.open(`Producto no encontrado: ${query}`, 'Cerrar', { duration: 3000 });
-        this.loading = false;
+        this.api.getProductByVariantBarcode(query).subscribe({
+          next: ({ product, variant }) => {
+            this.searchQuery = '';
+            this.loading = false;
+            this.addVariantToCart(product, variant);
+          },
+          error: () => {
+            this.searchQuery = '';
+            this.loading = false;
+            this.snack.open(`Producto no encontrado: ${query}`, 'Cerrar', { duration: 3000 });
+          },
+        });
       },
     });
   }
@@ -563,25 +678,84 @@ export class PosComponent implements OnInit, OnDestroy {
   }
 
   addProductToCart(product: Product) {
-    if (!product.salePrice || Number(product.salePrice) === 0) {
-      this.openNumpad({ ...product });
-      this.nameQuery = '';
-      this.nameResults = [];
+    this.nameQuery = '';
+    this.nameResults = [];
+    if (product.variants?.length) {
+      this.openVariantPicker(product);
       return;
     }
-    const existing = this.cart.find((i) => i.product.id === product.id);
+    if (!product.salePrice || Number(product.salePrice) === 0) {
+      this.openNumpadForProduct(product);
+      return;
+    }
+    const existing = this.cart.find((i) => i.product.id === product.id && !i.variant);
     if (existing) {
       existing.quantity++;
     } else {
       this.cart.push({ product, quantity: 1 });
     }
-    this.nameQuery = '';
-    this.nameResults = [];
+    this.saveCart();
     this.snack.open(`"${product.name}" agregado al carrito`, '', { duration: 1500 });
   }
 
-  openNumpad(product: Product) {
+  // ─── Variant picker ─────────────────────────────────────────────────────────
+
+  openVariantPicker(product: Product) {
+    const groupMap = new Map<string, ProductVariant[]>();
+    for (const v of product.variants ?? []) {
+      if (!groupMap.has(v.optionName)) groupMap.set(v.optionName, []);
+      groupMap.get(v.optionName)!.push(v);
+    }
+    this.variantPickerGroups = Array.from(groupMap.entries()).map(([name, variants]) => ({ name, variants }));
+    this.variantPickerProduct = product;
+    this.showVariantPicker = true;
+  }
+
+  selectVariant(variant: ProductVariant) {
+    const product = this.variantPickerProduct!;
+    this.showVariantPicker = false;
+    this.variantPickerProduct = null;
+    this.variantPickerGroups = [];
+    this.addVariantToCart(product, variant);
+  }
+
+  cancelVariantPicker() {
+    this.showVariantPicker = false;
+    this.variantPickerProduct = null;
+    this.variantPickerGroups = [];
+  }
+
+  addVariantToCart(product: Product, variant: ProductVariant) {
+    if (!variant.salePrice || Number(variant.salePrice) === 0) {
+      this.openNumpadForVariant(product, variant);
+      return;
+    }
+    const existing = this.cart.find((i) => i.product.id === product.id && i.variant?.id === variant.id);
+    if (existing) {
+      existing.quantity++;
+    } else {
+      this.cart.push({ product, variant, quantity: 1 });
+    }
+    this.saveCart();
+    this.snack.open(
+      `"${product.name} — ${variant.optionName}: ${variant.optionValue}" agregado al carrito`,
+      '', { duration: 1500 },
+    );
+  }
+
+  // ─── Numpad ──────────────────────────────────────────────────────────────────
+
+  openNumpadForProduct(product: Product) {
+    this.numpadProduct = { ...product };
+    this.numpadVariant = null;
+    this.numpadValue = '';
+    this.numpadError = '';
+    this.showNumpad = true;
+  }
+
+  openNumpadForVariant(product: Product, variant: ProductVariant) {
     this.numpadProduct = product;
+    this.numpadVariant = { ...variant };
     this.numpadValue = '';
     this.numpadError = '';
     this.showNumpad = true;
@@ -605,33 +779,63 @@ export class PosComponent implements OnInit, OnDestroy {
       return;
     }
     if (!this.numpadProduct) return;
-    const productWithPrice: Product = { ...this.numpadProduct, salePrice: price };
-    const existing = this.cart.find((i) => i.product.id === productWithPrice.id);
-    if (existing) {
-      existing.quantity++;
+
+    if (this.numpadVariant) {
+      const product = this.numpadProduct;
+      const variant: ProductVariant = { ...this.numpadVariant, salePrice: price };
+      const existing = this.cart.find((i) => i.product.id === product.id && i.variant?.id === variant.id);
+      if (existing) {
+        existing.quantity++;
+      } else {
+        this.cart.push({ product, variant, quantity: 1 });
+      }
+      this.saveCart();
+      this.snack.open(
+        `"${product.name} — ${variant.optionName}: ${variant.optionValue}" — $${price.toLocaleString()} — agregado`,
+        '', { duration: 1500 },
+      );
     } else {
-      this.cart.push({ product: productWithPrice, quantity: 1 });
+      const productWithPrice: Product = { ...this.numpadProduct, salePrice: price };
+      const existing = this.cart.find((i) => i.product.id === productWithPrice.id && !i.variant);
+      if (existing) {
+        existing.quantity++;
+      } else {
+        this.cart.push({ product: productWithPrice, quantity: 1 });
+      }
+      this.saveCart();
+      this.snack.open(
+        `"${this.numpadProduct.name}" — $${price.toLocaleString()} — agregado`,
+        '', { duration: 1500 },
+      );
     }
-    this.snack.open(`"${productWithPrice.name}" — $${price.toLocaleString()} — agregado`, '', { duration: 1500 });
+
     this.showNumpad = false;
     this.numpadProduct = null;
+    this.numpadVariant = null;
     this.numpadValue = '';
   }
 
   cancelNumpad() {
     this.showNumpad = false;
     this.numpadProduct = null;
+    this.numpadVariant = null;
     this.numpadValue = '';
     this.numpadError = '';
   }
 
+  // ─── Cart helpers ────────────────────────────────────────────────────────────
+
   changeQty(item: CartItem, delta: number) {
     item.quantity = Math.max(1, item.quantity + delta);
+    this.saveCart();
   }
 
   removeItem(item: CartItem) {
     this.cart = this.cart.filter((i) => i !== item);
+    this.saveCart();
   }
+
+  // ─── Quick services ──────────────────────────────────────────────────────────
 
   openServiceForm(svc: typeof this.QUICK_SERVICES[0]) {
     if (this.selectedService?.key === svc.key && this.showServiceForm) {
@@ -647,7 +851,7 @@ export class PosComponent implements OnInit, OnDestroy {
   }
 
   addService() {
-    if (!this.selectedService || !this.serviceName.trim() || this.servicePrice <= 0) { return; }
+    if (!this.selectedService || !this.serviceName.trim() || this.servicePrice <= 0) return;
     const existing = this.serviceCart.find(
       (s) => s.serviceKey === this.selectedService!.key && s.name === this.serviceName.trim(),
     );
@@ -662,6 +866,7 @@ export class PosComponent implements OnInit, OnDestroy {
         quantity: this.serviceQty,
       });
     }
+    this.saveCart();
     this.snack.open(`"${this.serviceName.trim()}" agregado al carrito`, '', { duration: 1500 });
     this.showServiceForm = false;
     this.selectedService = null;
@@ -669,10 +874,12 @@ export class PosComponent implements OnInit, OnDestroy {
 
   removeServiceItem(item: ServiceCartItem) {
     this.serviceCart = this.serviceCart.filter((s) => s !== item);
+    this.saveCart();
   }
 
   changeServiceQty(item: ServiceCartItem, delta: number) {
     item.quantity = Math.max(1, item.quantity + delta);
+    this.saveCart();
   }
 
   getServiceColor(key: string): string {
@@ -688,13 +895,44 @@ export class PosComponent implements OnInit, OnDestroy {
     this.serviceCart = [];
     this.discount = 0;
     this.lastTransaction = null;
+    this.saveCart();
+  }
+
+  // ─── Sale ────────────────────────────────────────────────────────────────────
+
+  // ─── Cart storage ────────────────────────────────────────────────────────────
+
+  private saveCart() {
+    try {
+      localStorage.setItem('pos_cart', JSON.stringify({
+        cart: this.cart,
+        serviceCart: this.serviceCart,
+        discount: this.discount,
+      }));
+    } catch { /* cuota excedida u otros errores de storage */ }
+  }
+
+  private loadCartFromStorage() {
+    try {
+      const raw = localStorage.getItem('pos_cart');
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      this.cart = saved.cart ?? [];
+      this.serviceCart = saved.serviceCart ?? [];
+      this.discount = saved.discount ?? 0;
+    } catch { /* JSON inválido, ignorar */ }
   }
 
   confirmSale() {
-    if (this.cartTotalItems === 0) { return; }
+    if (this.cartTotalItems === 0) return;
     this.processingPayment = true;
     this.api.createSale({
-      items: this.cart.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
+      items: this.cart.map((i) => ({
+        productId: i.product.id,
+        variantId: i.variant?.id,
+        quantity: i.quantity,
+        unitPrice: this.itemPrice(i),
+      })),
       quickItems: this.serviceCart.map((s) => ({
         name: s.name,
         unitPrice: s.unitPrice,

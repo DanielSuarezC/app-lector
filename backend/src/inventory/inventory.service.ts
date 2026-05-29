@@ -14,6 +14,36 @@ export class InventoryService {
     private readonly productsService: ProductsService,
   ) {}
 
+  async adjustVariantStock(
+    variantId: string,
+    productId: string,
+    dto: AdjustStockDto,
+    source = 'manual',
+  ): Promise<InventoryMovement> {
+    const variant = await this.productsService.findVariantById(variantId);
+    const stockBefore = variant.stock ?? 0;
+    const stockAfter = stockBefore + dto.quantity;
+
+    if (stockAfter < 0) {
+      throw new BadRequestException(
+        `Stock insuficiente en variante: tiene ${stockBefore}, intenta mover ${dto.quantity}`,
+      );
+    }
+
+    await this.productsService.setVariantStock(variantId, stockAfter);
+
+    const movement = this.movementRepo.create({
+      productId,
+      type: dto.type,
+      quantity: dto.quantity,
+      stockBefore,
+      stockAfter,
+      source,
+      notes: dto.notes ?? `Variante: ${variantId}`,
+    });
+    return this.movementRepo.save(movement);
+  }
+
   async adjustStock(
     productId: string,
     dto: AdjustStockDto,

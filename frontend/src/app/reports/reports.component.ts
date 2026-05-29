@@ -13,7 +13,10 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
+import {
+  MatNativeDateModule, DateAdapter, NativeDateAdapter,
+  MAT_DATE_FORMATS, MatDateFormats,
+} from '@angular/material/core';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatChipsModule } from '@angular/material/chips';
@@ -26,6 +29,40 @@ import { Sale, DailySummary, SalesSummary } from '../models/product.model';
 
 Chart.register(...registerables);
 
+class ColombiaDateAdapter extends NativeDateAdapter {
+  override parse(value: any): Date | null {
+    if (typeof value === 'string') {
+      const parts = value.trim().split('/');
+      if (parts.length === 3) {
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year = parseInt(parts[2], 10);
+        if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+          const d = new Date(year, month, day);
+          if (!isNaN(d.getTime())) return d;
+        }
+      }
+    }
+    return super.parse(value);
+  }
+
+  override format(date: Date, _displayFormat: object): string {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return `${d}/${m}/${date.getFullYear()}`;
+  }
+}
+
+const COL_DATE_FORMATS: MatDateFormats = {
+  parse: { dateInput: { day: 'numeric', month: 'numeric', year: 'numeric' } },
+  display: {
+    dateInput: { day: 'numeric', month: 'numeric', year: 'numeric' },
+    monthYearLabel: { year: 'numeric', month: 'short' },
+    dateA11yLabel: { year: 'numeric', month: 'long', day: 'numeric' },
+    monthYearA11yLabel: { year: 'numeric', month: 'long' },
+  },
+};
+
 @Component({
   selector: 'app-reports',
   standalone: true,
@@ -35,6 +72,10 @@ Chart.register(...registerables);
     MatFormFieldModule, MatTableModule, MatSnackBarModule, MatProgressSpinnerModule,
     MatPaginatorModule, MatDatepickerModule, MatNativeDateModule,
     MatExpansionModule, MatDividerModule, MatChipsModule, MatTooltipModule,
+  ],
+  providers: [
+    { provide: DateAdapter, useClass: ColombiaDateAdapter },
+    { provide: MAT_DATE_FORMATS, useValue: COL_DATE_FORMATS },
   ],
   template: `
     <div class="page-container">
@@ -49,7 +90,7 @@ Chart.register(...registerables);
           <mat-card class="stat-card">
             <mat-card-content style="padding-top:16px">
               <mat-card-title>{{ dailySummary()!.total | currency:'COP':'symbol':'1.0-0' }}</mat-card-title>
-              <mat-card-subtitle>Ventas hoy ({{ dailySummary()!.date }})</mat-card-subtitle>
+              <mat-card-subtitle>Ventas hoy ({{ formatIsoDate(dailySummary()!.date) }})</mat-card-subtitle>
             </mat-card-content>
           </mat-card>
           <mat-card class="stat-card">
@@ -65,33 +106,31 @@ Chart.register(...registerables);
                    ? (dailySummary()!.total / dailySummary()!.count | currency:'COP':'symbol':'1.0-0')
                    : '—' }}
               </mat-card-title>
-              <mat-card-subtitle>Ticket promedio</mat-card-subtitle>
+              <mat-card-subtitle>Ticket promedio hoy</mat-card-subtitle>
             </mat-card-content>
           </mat-card>
         </div>
       }
 
-      <!-- Filtros con DateRangePicker -->
+      <!-- Filtros con Date Range Picker -->
       <mat-card style="margin-bottom:16px">
         <mat-card-header><mat-card-title>Filtros</mat-card-title></mat-card-header>
         <mat-card-content>
           <div style="display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; padding-top:8px">
-            <mat-form-field appearance="outline">
-              <mat-label>Fecha inicio</mat-label>
-              <input matInput [matDatepicker]="pickerFrom" [(ngModel)]="fromDate">
-              <mat-datepicker-toggle matIconSuffix [for]="pickerFrom"></mat-datepicker-toggle>
-              <mat-datepicker #pickerFrom></mat-datepicker>
-            </mat-form-field>
-            <mat-form-field appearance="outline">
-              <mat-label>Fecha fin</mat-label>
-              <input matInput [matDatepicker]="pickerTo" [(ngModel)]="toDate">
-              <mat-datepicker-toggle matIconSuffix [for]="pickerTo"></mat-datepicker-toggle>
-              <mat-datepicker #pickerTo></mat-datepicker>
+            <mat-form-field appearance="outline" style="min-width:300px">
+              <mat-label>Período (dd/mm/aaaa)</mat-label>
+              <mat-date-range-input [rangePicker]="rangePicker" [formGroup]="rangeForm">
+                <input matStartDate formControlName="start" placeholder="Inicio">
+                <input matEndDate formControlName="end" placeholder="Fin">
+              </mat-date-range-input>
+              <mat-datepicker-toggle matIconSuffix [for]="rangePicker"></mat-datepicker-toggle>
+              <mat-date-range-picker #rangePicker></mat-date-range-picker>
             </mat-form-field>
             <button mat-raised-button color="primary" (click)="loadAll()" [disabled]="loading()">
               <mat-icon>search</mat-icon> Buscar
             </button>
             <button mat-stroked-button (click)="setToday()">Hoy</button>
+            <button mat-stroked-button (click)="setLastWeek()">Última semana</button>
             <button mat-stroked-button (click)="setThisMonth()">Este mes</button>
             <span style="flex:1"></span>
             <button mat-stroked-button (click)="exportXlsx()" [disabled]="sales().length === 0">
@@ -106,6 +145,9 @@ Chart.register(...registerables);
 
       <!-- Resumen período -->
       @if (summary()) {
+        <p style="color:#666; font-size:0.9rem; margin:0 0 12px 4px">
+          Período consultado: <strong>{{ periodLabel }}</strong>
+        </p>
         <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px">
           <mat-card>
             <mat-card-content style="padding-top:16px">
@@ -286,6 +328,7 @@ export class ReportsComponent implements OnInit, AfterViewInit {
 
   private readonly api = inject(ApiService);
   private readonly snack = inject(MatSnackBar);
+  private readonly fb = inject(FormBuilder);
 
   private dailyChartInstance: Chart | null = null;
   private paymentChartInstance: Chart | null = null;
@@ -296,8 +339,11 @@ export class ReportsComponent implements OnInit, AfterViewInit {
   summary = signal<SalesSummary | null>(null);
   loading = signal(false);
 
-  fromDate: Date | null = null;
-  toDate: Date | null = null;
+  rangeForm = this.fb.group({
+    start: [null as Date | null],
+    end: [null as Date | null],
+  });
+
   pageIndex = 0;
   pageSize = 10;
   expandedSaleId: string | null = null;
@@ -308,8 +354,20 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     return this.sales().slice(start, start + this.pageSize);
   });
 
+  get periodLabel(): string {
+    const { start, end } = this.rangeForm.value;
+    const fmt = (d: Date | null | undefined): string =>
+      d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}` : '—';
+    if (!start && !end) return '—';
+    if (start && end && start.toDateString() === end.toDateString()) return fmt(start);
+    return `${fmt(start)} — ${fmt(end)}`;
+  }
+
   ngOnInit() {
-    this.setToday();
+    const today = new Date();
+    const weekAgo = new Date();
+    weekAgo.setDate(today.getDate() - 6);
+    this.rangeForm.setValue({ start: weekAgo, end: today });
     this.loadDailySummary();
     this.loadAll();
   }
@@ -318,14 +376,25 @@ export class ReportsComponent implements OnInit, AfterViewInit {
 
   setToday() {
     const today = new Date();
-    this.fromDate = today;
-    this.toDate = today;
+    this.rangeForm.setValue({ start: today, end: today });
+    this.loadAll();
+  }
+
+  setLastWeek() {
+    const today = new Date();
+    const weekAgo = new Date();
+    weekAgo.setDate(today.getDate() - 6);
+    this.rangeForm.setValue({ start: weekAgo, end: today });
+    this.loadAll();
   }
 
   setThisMonth() {
     const now = new Date();
-    this.fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    this.toDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    this.rangeForm.setValue({
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+    });
+    this.loadAll();
   }
 
   loadDailySummary() {
@@ -339,8 +408,9 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     this.pageIndex = 0;
     this.expandedSaleId = null;
 
-    const from = this.fromDate ? this.toIsoDate(this.fromDate) : undefined;
-    const to = this.toDate ? this.toIsoDate(this.toDate) : undefined;
+    const { start, end } = this.rangeForm.value;
+    const from = start ? this.toIsoDate(start) : undefined;
+    const to = end ? this.toIsoDate(end) : (start ? this.toIsoDate(start) : undefined);
 
     this.api.getSales(from, to).subscribe({
       next: (sales) => {
@@ -368,7 +438,19 @@ export class ReportsComponent implements OnInit, AfterViewInit {
   }
 
   private toIsoDate(d: Date): string {
-    return d.toISOString().split('T')[0];
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  formatIsoDate(isoDate: string): string {
+    const [y, m, d] = isoDate.split('-');
+    return `${d}/${m}/${y}`;
+  }
+
+  private formatDate(d: Date): string {
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
   }
 
   private renderCharts(s: SalesSummary) {
@@ -380,7 +462,10 @@ export class ReportsComponent implements OnInit, AfterViewInit {
   private renderDailyChart(s: SalesSummary) {
     if (!this.dailyChartRef) return;
     this.dailyChartInstance?.destroy();
-    const labels = s.dailySeries.map((d) => d.date);
+    const labels = s.dailySeries.map((d) => {
+      const [y, m, day] = d.date.split('-');
+      return `${day}/${m}/${y}`;
+    });
     const data = s.dailySeries.map((d) => d.total);
     this.dailyChartInstance = new Chart(this.dailyChartRef.nativeElement, {
       type: 'bar',
@@ -484,12 +569,13 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     doc.text(`Generado: ${now.toLocaleString('es-CO')}`, pageW - 14, 20, { align: 'right' });
 
     // Período
-    const from = this.fromDate ? this.toIsoDate(this.fromDate) : 'Inicio';
-    const to = this.toDate ? this.toIsoDate(this.toDate) : 'Hoy';
+    const { start, end } = this.rangeForm.value;
+    const fromLabel = start ? this.formatDate(start) : 'Inicio';
+    const toLabel = end ? this.formatDate(end) : 'Hoy';
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Período: ${from} — ${to}`, 14, 36);
+    doc.text(`Período: ${fromLabel} — ${toLabel}`, 14, 36);
 
     // Resumen
     const s = this.summary();
@@ -551,12 +637,12 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     autoTable(doc, {
       startY: finalY + 13,
       head: [['Fecha', 'N° Transacción', 'Ítems', 'Total', 'Medio de Pago']],
-      body: this.sales().map((s) => [
-        new Date(s.createdAt).toLocaleString('es-CO'),
-        s.transactionNumber,
-        String(s.items.length),
-        `$${Number(s.total).toLocaleString('es-CO')}`,
-        s.paymentMethod,
+      body: this.sales().map((sale) => [
+        new Date(sale.createdAt).toLocaleString('es-CO'),
+        sale.transactionNumber,
+        String(sale.items.length),
+        `$${Number(sale.total).toLocaleString('es-CO')}`,
+        sale.paymentMethod,
       ]),
       theme: 'striped',
       headStyles: { fillColor: [63, 81, 181] },

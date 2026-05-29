@@ -68,12 +68,20 @@ export interface CreateProductDto {
 
 export interface CartItem {
   product: Product;
+  variant?: ProductVariant;
   quantity: number;
 }
 
 export interface SaleItem {
   productId: string;
+  variantId?: string;
   quantity: number;
+  unitPrice?: number;
+}
+
+export interface VariantBarcodeResult {
+  product: Product;
+  variant: ProductVariant;
 }
 
 export interface CreateSaleDto {

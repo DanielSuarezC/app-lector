@@ -29,20 +29,45 @@ export class SalesService {
 
     for (const item of dto.items) {
       const product = await this.productsService.findOne(item.productId);
-      if (product.trackInventory && (product.stock ?? 0) < item.quantity) {
-        throw new BadRequestException(
-          `Stock insuficiente para '${product.name}': tiene ${product.stock ?? 0}, vende ${item.quantity}`,
-        );
+      let unitPrice: number;
+      let itemBarcode: string;
+      let itemSystemCode: string | undefined;
+      let productName: string;
+
+      if (item.variantId) {
+        const variant = await this.productsService.findVariantById(item.variantId);
+        unitPrice = item.unitPrice != null ? item.unitPrice : Number(variant.salePrice);
+        itemBarcode = variant.barcode ?? '';
+        itemSystemCode = variant.systemCode;
+        productName = `${product.name} — ${variant.optionName}: ${variant.optionValue}`;
+
+        if (product.trackInventory && (variant.stock ?? 0) < item.quantity) {
+          throw new BadRequestException(
+            `Stock insuficiente para '${productName}': tiene ${variant.stock ?? 0}, solicita ${item.quantity}`,
+          );
+        }
+      } else {
+        unitPrice = item.unitPrice != null ? item.unitPrice : Number(product.salePrice);
+        itemBarcode = product.barcode ?? '';
+        itemSystemCode = product.systemCode;
+        productName = product.name!;
+
+        if (product.trackInventory && (product.stock ?? 0) < item.quantity) {
+          throw new BadRequestException(
+            `Stock insuficiente para '${product.name}': tiene ${product.stock ?? 0}, solicita ${item.quantity}`,
+          );
+        }
       }
-      const itemSubtotal = Number(product.salePrice) * item.quantity;
+
+      const itemSubtotal = unitPrice * item.quantity;
       itemSnapshots.push({
         productId: product.id!,
-        systemCode: product.systemCode,
-        barcode: product.barcode ?? '',
-        productName: product.name!,
+        systemCode: itemSystemCode,
+        barcode: itemBarcode,
+        productName,
         category: product.category ?? '',
         quantity: item.quantity,
-        unitPrice: Number(product.salePrice),
+        unitPrice,
         subtotal: itemSubtotal,
       });
       subtotal += itemSubtotal;
@@ -73,7 +98,16 @@ export class SalesService {
 
     for (const item of dto.items) {
       const product = await this.productsService.findOne(item.productId);
-      if (product.trackInventory) {
+      if (!product.trackInventory) continue;
+
+      if (item.variantId) {
+        await this.inventoryService.adjustVariantStock(
+          item.variantId,
+          item.productId,
+          { quantity: -item.quantity, type: MovementType.SALE },
+          'pos',
+        );
+      } else {
         await this.inventoryService.adjustStock(
           item.productId,
           { quantity: -item.quantity, type: MovementType.SALE },
@@ -97,9 +131,9 @@ export class SalesService {
 
   findAll(from?: string, to?: string): Promise<Sale[]> {
     if (from && to) {
-      const fromDate = new Date(from);
-      const toDate = new Date(to);
-      toDate.setHours(23, 59, 59, 999);
+      // Parse as local time so the filter aligns with the server clock (same as getDailySummary)
+      const fromDate = new Date(`${from}T00:00:00`);
+      const toDate = new Date(`${to}T23:59:59.999`);
       return this.saleRepo.find({
         where: { createdAt: Between(fromDate, toDate) },
         order: { createdAt: 'DESC' },
