@@ -18,7 +18,7 @@ SoftwareSerial scannerSerial(2, 3);
 
 static const unsigned long BAUD_SERIAL   = 115200UL;
 static const unsigned long BAUD_SCANNER  = 9600UL;
-static const unsigned long TEMP_INTERVAL = 10000UL; // ms entre lecturas de temperatura
+static const unsigned long TEMP_INTERVAL = 100000UL; // ms entre lecturas de temperatura - 1m 4 segundos
 
 // Offset de calibración del sensor interno del ATmega328P.
 // El valor 324 del datasheet varía por chip. Para calibrar:

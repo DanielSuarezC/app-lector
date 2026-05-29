@@ -11,7 +11,7 @@ export class ScannerEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'enum', enum: ScannerEventType })
+  @Column({ type: 'enum', enum: ScannerEventType, default: ScannerEventType.BARCODE })
   type: ScannerEventType;
 
   @Column({ nullable: true, length: 64 })

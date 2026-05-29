@@ -43,5 +43,10 @@
     "@angular/platform-browser": "17.3.12",
     "@angular/platform-browser-dynamic": "17.3.12",
     "@angular/router": "17.3.12"
+  },
+  "dependencies": {
+    "pg": "^8.21.0",
+    "typeorm": "^0.3.20",
+    "uuid": "^14.0.0"
   }
 }

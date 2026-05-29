@@ -29,7 +29,7 @@ export class SalesService {
 
     for (const item of dto.items) {
       const product = await this.productsService.findOne(item.productId);
-      if ((product.stock ?? 0) < item.quantity) {
+      if (product.trackInventory && (product.stock ?? 0) < item.quantity) {
         throw new BadRequestException(
           `Stock insuficiente para '${product.name}': tiene ${product.stock ?? 0}, vende ${item.quantity}`,
         );
@@ -37,8 +37,10 @@ export class SalesService {
       const itemSubtotal = Number(product.salePrice) * item.quantity;
       itemSnapshots.push({
         productId: product.id!,
+        systemCode: product.systemCode,
         barcode: product.barcode ?? '',
         productName: product.name!,
+        category: product.category ?? '',
         quantity: item.quantity,
         unitPrice: Number(product.salePrice),
         subtotal: itemSubtotal,
@@ -46,7 +48,6 @@ export class SalesService {
       subtotal += itemSubtotal;
     }
 
-    // Procesar servicios rápidos (sin productId, sin descuento de inventario)
     if (dto.quickItems?.length) {
       for (const qi of dto.quickItems) {
         const itemSubtotal = qi.unitPrice * qi.quantity;
@@ -54,6 +55,7 @@ export class SalesService {
           productId: 'quick-service',
           barcode: '',
           productName: qi.name,
+          category: qi.category ?? 'Servicios',
           quantity: qi.quantity,
           unitPrice: qi.unitPrice,
           subtotal: itemSubtotal,
@@ -69,13 +71,15 @@ export class SalesService {
       throw new BadRequestException('El descuento no puede superar el subtotal');
     }
 
-    // Descontar inventario
     for (const item of dto.items) {
-      await this.inventoryService.adjustStock(
-        item.productId,
-        { quantity: -item.quantity, type: MovementType.SALE },
-        'pos',
-      );
+      const product = await this.productsService.findOne(item.productId);
+      if (product.trackInventory) {
+        await this.inventoryService.adjustStock(
+          item.productId,
+          { quantity: -item.quantity, type: MovementType.SALE },
+          'pos',
+        );
+      }
     }
 
     const sale = this.saleRepo.create({
@@ -93,12 +97,15 @@ export class SalesService {
 
   findAll(from?: string, to?: string): Promise<Sale[]> {
     if (from && to) {
+      const fromDate = new Date(from);
+      const toDate = new Date(to);
+      toDate.setHours(23, 59, 59, 999);
       return this.saleRepo.find({
-        where: { createdAt: Between(new Date(from), new Date(to)) },
+        where: { createdAt: Between(fromDate, toDate) },
         order: { createdAt: 'DESC' },
       });
     }
-    return this.saleRepo.find({ order: { createdAt: 'DESC' }, take: 100 });
+    return this.saleRepo.find({ order: { createdAt: 'DESC' }, take: 200 });
   }
 
   async getDailySummary(): Promise<{ date: string; total: number; count: number }> {
@@ -106,15 +113,56 @@ export class SalesService {
     start.setHours(0, 0, 0, 0);
     const end = new Date();
     end.setHours(23, 59, 59, 999);
-
-    const sales = await this.saleRepo.find({
-      where: { createdAt: Between(start, end) },
-    });
-
+    const sales = await this.saleRepo.find({ where: { createdAt: Between(start, end) } });
     return {
       date: start.toISOString().split('T')[0],
       total: sales.reduce((acc, s) => acc + Number(s.total), 0),
       count: sales.length,
+    };
+  }
+
+  async getSalesSummary(from?: string, to?: string): Promise<{
+    totalRevenue: number;
+    totalTransactions: number;
+    byPaymentMethod: Record<string, { count: number; total: number }>;
+    byCategory: Record<string, { count: number; total: number }>;
+    dailySeries: Array<{ date: string; total: number; count: number }>;
+  }> {
+    const sales = await this.findAll(from, to);
+
+    const byPaymentMethod: Record<string, { count: number; total: number }> = {};
+    const byCategory: Record<string, { count: number; total: number }> = {};
+    const dailyMap: Record<string, { total: number; count: number }> = {};
+
+    for (const sale of sales) {
+      const pm = sale.paymentMethod;
+      if (!byPaymentMethod[pm]) byPaymentMethod[pm] = { count: 0, total: 0 };
+      byPaymentMethod[pm].count++;
+      byPaymentMethod[pm].total += Number(sale.total);
+
+      const day = sale.createdAt.toISOString().split('T')[0];
+      if (!dailyMap[day]) dailyMap[day] = { total: 0, count: 0 };
+      dailyMap[day].total += Number(sale.total);
+      dailyMap[day].count++;
+
+      for (const item of sale.items) {
+        const cat = item.category ?? 'Sin categoría';
+        if (!byCategory[cat]) byCategory[cat] = { count: 0, total: 0 };
+        byCategory[cat].count += item.quantity;
+        byCategory[cat].total += item.subtotal;
+      }
+    }
+
+    const dailySeries = Object.entries(dailyMap)
+      .map(([date, v]) => ({ date, ...v }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      totalRevenue: sales.reduce((acc, s) => acc + Number(s.total), 0),
+      totalTransactions: sales.length,
+      byPaymentMethod,
+      byCategory,
+      dailySeries,
     };
   }
 }

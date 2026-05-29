@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -16,7 +16,7 @@ import { Subscription } from 'rxjs';
 
 import { ApiService } from '../services/api.service';
 import { ScannerService } from '../services/scanner.service';
-import { CartItem, Product, ServiceCartItem } from '../models/product.model';
+import { CartItem, Product, ServiceCartItem, PaymentMethod } from '../models/product.model';
 
 @Component({
   selector: 'app-pos',
@@ -43,6 +43,55 @@ import { CartItem, Product, ServiceCartItem } from '../models/product.model';
           </span>
         </div>
       </div>
+
+      <!-- Teclado numérico para precio manual -->
+      @if (showNumpad && numpadProduct) {
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center">
+          <mat-card style="width:340px">
+            <mat-card-header>
+              <mat-icon mat-card-avatar style="color:#3f51b5">price_change</mat-icon>
+              <mat-card-title>Ingresar precio</mat-card-title>
+              <mat-card-subtitle>{{ numpadProduct.name }}</mat-card-subtitle>
+            </mat-card-header>
+            <mat-card-content>
+              <!-- Display del valor ingresado -->
+              <div style="background:#f5f5f5; border-radius:8px; padding:16px 20px; margin-bottom:16px; text-align:right">
+                <div style="font-size:2.2rem; font-weight:700; font-family:monospace; min-height:3rem; color:#1a237e">
+                  {{ numpadValue || '0' }}
+                </div>
+                <div style="font-size:0.8rem; color:#888">COP</div>
+                @if (numpadError) {
+                  <div style="color:#f44336; font-size:0.85rem; margin-top:4px">{{ numpadError }}</div>
+                }
+              </div>
+
+              <!-- Teclas del teclado -->
+              <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px">
+                @for (key of numpadKeys; track key) {
+                  <button mat-stroked-button
+                    style="height:56px; font-size:1.2rem; font-weight:600; border-radius:8px"
+                    (click)="numpadPress(key)">
+                    @if (key === 'back') {
+                      <mat-icon>backspace</mat-icon>
+                    } @else {
+                      {{ key }}
+                    }
+                  </button>
+                }
+              </div>
+            </mat-card-content>
+            <mat-card-actions style="padding:0 16px 16px; display:flex; gap:8px">
+              <button mat-raised-button color="primary" style="flex:1; height:48px; font-size:1rem"
+                (click)="confirmNumpad()">
+                <mat-icon>check</mat-icon> Confirmar
+              </button>
+              <button mat-stroked-button style="height:48px" (click)="cancelNumpad()">
+                Cancelar
+              </button>
+            </mat-card-actions>
+          </mat-card>
+        </div>
+      }
 
       <div style="display:grid; grid-template-columns:1fr 380px; gap:24px">
         <!-- Panel izquierdo: búsqueda y carrito -->
@@ -136,9 +185,13 @@ import { CartItem, Product, ServiceCartItem } from '../models/product.model';
                           </small>
                         </div>
                         <div style="text-align:right">
-                          <strong style="color:#3f51b5">
-                            {{ product.salePrice | currency:'COP':'symbol':'1.0-0' }}
-                          </strong>
+                          @if (!product.salePrice || +product.salePrice === 0) {
+                            <strong style="color:#ff9800; font-size:0.85rem">Sin precio fijo</strong>
+                          } @else {
+                            <strong style="color:#3f51b5">
+                              {{ product.salePrice | currency:'COP':'symbol':'1.0-0' }}
+                            </strong>
+                          }
                           <br>
                           <small [style.color]="product.stock <= product.minStock ? '#f44336' : '#4caf50'">
                             Stock: {{ product.stock }}
@@ -221,7 +274,7 @@ import { CartItem, Product, ServiceCartItem } from '../models/product.model';
                   El carrito está vacío. Escanea, busca un producto o agrega un servicio rápido.
                 </p>
               }
-              @for (item of cart; track item.product.id) {
+              @for (item of cart; track item.product.id + item.product.salePrice) {
                 <div class="cart-item">
                   <div>
                     <strong>{{ item.product.name }}</strong><br>
@@ -291,10 +344,14 @@ import { CartItem, Product, ServiceCartItem } from '../models/product.model';
               </div>
 
               <mat-form-field appearance="outline" style="width:100%">
-                <mat-label>Método de pago</mat-label>
+                <mat-label>Medio de pago</mat-label>
                 <mat-select [(ngModel)]="paymentMethod">
-                  <mat-option value="cash">Efectivo</mat-option>
-                  <mat-option value="nequi">Nequi</mat-option>
+                  @for (pm of paymentMethods(); track pm.id) {
+                    <mat-option [value]="pm.key">{{ pm.name }}</mat-option>
+                  }
+                  @if (paymentMethods().length === 0) {
+                    <mat-option value="cash">Efectivo</mat-option>
+                  }
                 </mat-select>
               </mat-form-field>
 
@@ -380,6 +437,10 @@ export class PosComponent implements OnInit, OnDestroy {
     { key: 'tramite',       label: 'Trámite Digital',  icon: 'assignment',  color: '#c62828', defaultPrice: 5000 },
   ];
 
+  readonly numpadKeys = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '.', '0', 'back'];
+
+  paymentMethods = signal<PaymentMethod[]>([]);
+
   cart: CartItem[] = [];
   serviceCart: ServiceCartItem[] = [];
   searchQuery = '';
@@ -388,7 +449,7 @@ export class PosComponent implements OnInit, OnDestroy {
   nameSearching = false;
   searchMode: 'barcode' | 'name' | 'service' = 'barcode';
   discount = 0;
-  paymentMethod: 'cash' | 'card' | 'transfer' | 'nequi' = 'cash';
+  paymentMethod = 'cash';
   loading = false;
   processingPayment = false;
   lastScannedCode: string | null = null;
@@ -399,6 +460,11 @@ export class PosComponent implements OnInit, OnDestroy {
   serviceName = '';
   serviceQty = 1;
   servicePrice = 0;
+
+  showNumpad = false;
+  numpadProduct: Product | null = null;
+  numpadValue = '';
+  numpadError = '';
 
   get subtotal(): number {
     const productsTotal = this.cart.reduce((sum, item) => sum + item.product.salePrice * item.quantity, 0);
@@ -415,6 +481,14 @@ export class PosComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.api.getPaymentMethods().subscribe({
+      next: (pms) => {
+        this.paymentMethods.set(pms);
+        if (pms.length > 0 && !pms.find((p) => p.key === this.paymentMethod)) {
+          this.paymentMethod = pms[0].key;
+        }
+      },
+    });
     this.scanSub = this.scanner.barcode$.subscribe((code) => {
       this.lastScannedCode = code;
       this.searchMode = 'barcode';
@@ -451,9 +525,13 @@ export class PosComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.api.getProductByBarcode(query).subscribe({
       next: (product: Product) => {
-        this.cart.push({ product, quantity: 1 });
         this.searchQuery = '';
         this.loading = false;
+        if (!product.salePrice || Number(product.salePrice) === 0) {
+          this.openNumpad({ ...product });
+          return;
+        }
+        this.cart.push({ product, quantity: 1 });
       },
       error: () => {
         this.snack.open(`Producto no encontrado: ${query}`, 'Cerrar', { duration: 3000 });
@@ -485,6 +563,12 @@ export class PosComponent implements OnInit, OnDestroy {
   }
 
   addProductToCart(product: Product) {
+    if (!product.salePrice || Number(product.salePrice) === 0) {
+      this.openNumpad({ ...product });
+      this.nameQuery = '';
+      this.nameResults = [];
+      return;
+    }
     const existing = this.cart.find((i) => i.product.id === product.id);
     if (existing) {
       existing.quantity++;
@@ -494,6 +578,51 @@ export class PosComponent implements OnInit, OnDestroy {
     this.nameQuery = '';
     this.nameResults = [];
     this.snack.open(`"${product.name}" agregado al carrito`, '', { duration: 1500 });
+  }
+
+  openNumpad(product: Product) {
+    this.numpadProduct = product;
+    this.numpadValue = '';
+    this.numpadError = '';
+    this.showNumpad = true;
+  }
+
+  numpadPress(key: string) {
+    if (key === 'back') {
+      this.numpadValue = this.numpadValue.slice(0, -1);
+    } else if (key === '.') {
+      if (!this.numpadValue.includes('.')) this.numpadValue += '.';
+    } else {
+      if (this.numpadValue.length < 10) this.numpadValue += key;
+    }
+    this.numpadError = '';
+  }
+
+  confirmNumpad() {
+    const price = parseFloat(this.numpadValue);
+    if (!price || price <= 0) {
+      this.numpadError = 'Ingresa un precio válido mayor a 0';
+      return;
+    }
+    if (!this.numpadProduct) return;
+    const productWithPrice: Product = { ...this.numpadProduct, salePrice: price };
+    const existing = this.cart.find((i) => i.product.id === productWithPrice.id);
+    if (existing) {
+      existing.quantity++;
+    } else {
+      this.cart.push({ product: productWithPrice, quantity: 1 });
+    }
+    this.snack.open(`"${productWithPrice.name}" — $${price.toLocaleString()} — agregado`, '', { duration: 1500 });
+    this.showNumpad = false;
+    this.numpadProduct = null;
+    this.numpadValue = '';
+  }
+
+  cancelNumpad() {
+    this.showNumpad = false;
+    this.numpadProduct = null;
+    this.numpadValue = '';
+    this.numpadError = '';
   }
 
   changeQty(item: CartItem, delta: number) {

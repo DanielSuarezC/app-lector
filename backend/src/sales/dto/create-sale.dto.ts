@@ -1,18 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsArray, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString,
+  IsArray, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString,
   IsUUID, Min, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-
-import { PaymentMethod } from '../sale.entity';
 
 export class SaleItemDto {
   @ApiProperty({ example: 'uuid-del-producto' })
   @IsUUID()
   productId: string;
 
-  @ApiProperty({ example: 2, description: 'Cantidad vendida' })
+  @ApiProperty({ example: 2 })
   @IsInt()
   @Min(1)
   quantity: number;
@@ -34,7 +32,7 @@ export class QuickServiceItemDto {
   @Min(1)
   quantity: number;
 
-  @ApiPropertyOptional({ example: 'impresion' })
+  @ApiPropertyOptional({ example: 'Servicios' })
   @IsOptional()
   @IsString()
   category?: string;
@@ -54,11 +52,12 @@ export class CreateSaleDto {
   @Type(() => QuickServiceItemDto)
   quickItems?: QuickServiceItemDto[];
 
-  @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.CASH })
-  @IsEnum(PaymentMethod)
-  paymentMethod: PaymentMethod;
+  @ApiProperty({ example: 'cash', description: 'Clave del medio de pago' })
+  @IsString()
+  @IsNotEmpty()
+  paymentMethod: string;
 
-  @ApiPropertyOptional({ example: 500, description: 'Descuento en COP' })
+  @ApiPropertyOptional({ example: 500 })
   @IsOptional()
   @IsNumber()
   @Min(0)

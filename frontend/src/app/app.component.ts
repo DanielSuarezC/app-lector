@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDividerModule } from '@angular/material/divider';
 
 import { ScannerService } from './services/scanner.service';
 
@@ -15,7 +16,7 @@ import { ScannerService } from './services/scanner.service';
   imports: [
     RouterOutlet, RouterLink, RouterLinkActive,
     MatToolbarModule, MatButtonModule, MatIconModule,
-    MatSidenavModule, MatListModule, MatTooltipModule,
+    MatSidenavModule, MatListModule, MatTooltipModule, MatDividerModule,
   ],
   template: `
     <mat-toolbar color="primary">
@@ -62,6 +63,11 @@ import { ScannerService } from './services/scanner.service';
           <a mat-list-item routerLink="/monitor" routerLinkActive="active-link">
             <mat-icon matListItemIcon>developer_board</mat-icon>
             <span matListItemTitle>Nodo Arduino</span>
+          </a>
+          <mat-divider style="margin:8px 0"></mat-divider>
+          <a mat-list-item routerLink="/settings" routerLinkActive="active-link">
+            <mat-icon matListItemIcon>settings</mat-icon>
+            <span matListItemTitle>Configuración</span>
           </a>
         </mat-nav-list>
       </mat-sidenav>

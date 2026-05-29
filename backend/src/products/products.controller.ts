@@ -14,15 +14,15 @@ export class ProductsController {
   constructor(private readonly service: ProductsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Crear nuevo producto' })
-  @ApiResponse({ status: 201, description: 'Producto creado' })
+  @ApiOperation({ summary: 'Crear nuevo producto o servicio' })
+  @ApiResponse({ status: 201 })
   @ApiResponse({ status: 409, description: 'Barcode duplicado' })
   create(@Body() dto: CreateProductDto) {
     return this.service.create(dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar todos los productos activos' })
+  @ApiOperation({ summary: 'Listar todos los productos/servicios activos' })
   findAll() {
     return this.service.findAll();
   }
@@ -35,15 +35,21 @@ export class ProductsController {
 
   @Get('search')
   @ApiOperation({ summary: 'Buscar productos por nombre (búsqueda parcial)' })
-  @ApiQuery({ name: 'q', description: 'Texto a buscar en el nombre del producto' })
+  @ApiQuery({ name: 'q', description: 'Texto a buscar' })
   searchByName(@Query('q') q: string) {
     return this.service.searchByName(q ?? '');
   }
 
   @Get('barcode/:barcode')
-  @ApiOperation({ summary: 'Buscar producto por código de barras' })
+  @ApiOperation({ summary: 'Buscar producto por código de barras (referencia)' })
   findByBarcode(@Param('barcode') barcode: string) {
     return this.service.findByBarcode(barcode);
+  }
+
+  @Get('code/:systemCode')
+  @ApiOperation({ summary: 'Buscar producto por código de sistema' })
+  findBySystemCode(@Param('systemCode') systemCode: string) {
+    return this.service.findBySystemCode(systemCode);
   }
 
   @Get(':id')
@@ -60,7 +66,6 @@ export class ProductsController {
 
   @Post(':id/generate-barcode')
   @ApiOperation({ summary: 'Generar código de barras EAN-13 para producto sin código' })
-  @ApiResponse({ status: 200, description: 'Producto con barcode generado' })
   generateBarcode(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.generateBarcode(id);
   }

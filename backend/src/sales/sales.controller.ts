@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 import { SalesService } from './sales.service';
@@ -16,16 +16,24 @@ export class SalesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar ventas (últimas 100 o filtradas por fecha)' })
-  @ApiQuery({ name: 'from', required: false, type: String, example: '2026-01-01' })
-  @ApiQuery({ name: 'to', required: false, type: String, example: '2026-12-31' })
+  @ApiOperation({ summary: 'Listar ventas filtradas por fecha' })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
   findAll(@Query('from') from?: string, @Query('to') to?: string) {
     return this.service.findAll(from, to);
   }
 
   @Get('daily-summary')
-  @ApiOperation({ summary: 'Resumen de ventas del día actual' })
+  @ApiOperation({ summary: 'Resumen del día actual' })
   getDailySummary() {
     return this.service.getDailySummary();
+  }
+
+  @Get('summary')
+  @ApiOperation({ summary: 'Resumen completo: totales, por método de pago, por categoría, serie diaria' })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  getSummary(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.getSalesSummary(from, to);
   }
 }

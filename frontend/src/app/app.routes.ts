@@ -18,5 +18,9 @@ export const routes: Routes = [
     path: 'monitor',
     loadComponent: () => import('./monitor/monitor.component').then((m) => m.MonitorComponent),
   },
+  {
+    path: 'settings',
+    loadComponent: () => import('./settings/settings.component').then((m) => m.SettingsComponent),
+  },
   { path: '**', redirectTo: 'pos' },
 ];

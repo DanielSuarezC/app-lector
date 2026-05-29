@@ -23,16 +23,16 @@ export class InventoryMovement {
   @JoinColumn({ name: 'productId' })
   product: Product;
 
-  @Column({ type: 'enum', enum: MovementType })
+  @Column({ type: 'enum', enum: MovementType, default: MovementType.ADJUSTMENT })
   type: MovementType;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'int', default: 0 })
   quantity: number;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'int', default: 0 })
   stockBefore: number;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'int', default: 0 })
   stockAfter: number;
 
   @Column({ length: 40, nullable: true })
