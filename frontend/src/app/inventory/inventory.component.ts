@@ -789,8 +789,8 @@ export class InventoryComponent implements OnInit, OnDestroy {
           return {
             optionName: groupName,
             optionValue: v.value,
-            costPrice: v.costPrice ?? 0,
-            salePrice: v.salePrice ?? 0,
+            costPrice: Number(v.costPrice ?? 0),
+            salePrice: Number(v.salePrice ?? 0),
             barcode: v.barcode || undefined,
             stock: val.trackInventory ? (v.stock ?? 0) : 0,
             minStock: val.trackInventory ? (v.minStock ?? 0) : 0,
@@ -804,12 +804,12 @@ export class InventoryComponent implements OnInit, OnDestroy {
       name: val.name,
       description: val.description || undefined,
       category: val.category || undefined,
-      costPrice: hasVariants ? 0 : (val.costPrice ?? 0),
-      salePrice: hasVariants ? 0 : (val.salePrice ?? 0),
+      costPrice: hasVariants ? 0 : Number(val.costPrice ?? 0),
+      salePrice: hasVariants ? 0 : Number(val.salePrice ?? 0),
       soldBy: val.soldBy,
       trackInventory: val.type === 'service' ? false : (val.trackInventory ?? true),
-      stock: hasVariants ? 0 : (val.type === 'service' ? 0 : (val.trackInventory ? val.stock : 0)),
-      minStock: hasVariants ? 0 : (val.type === 'service' ? 0 : (val.trackInventory ? val.minStock : 0)),
+      stock: hasVariants ? 0 : (val.type === 'service' ? 0 : (val.trackInventory ? Number(val.stock ?? 0) : 0)),
+      minStock: hasVariants ? 0 : (val.type === 'service' ? 0 : (val.trackInventory ? Number(val.minStock ?? 0) : 0)),
       variants: flatVariants,
     };
 
