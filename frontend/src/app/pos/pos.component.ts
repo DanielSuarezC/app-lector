@@ -281,51 +281,39 @@ import { CartItem, Product, ProductVariant, ServiceCartItem, PaymentMethod } fro
 
               <!-- Modo servicios rápidos -->
               @if (searchMode === 'service') {
-                <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px">
-                  @for (svc of QUICK_SERVICES; track svc.key) {
-                    <button mat-raised-button
-                      [style.background-color]="selectedService?.key === svc.key ? svc.color : ''"
-                      [style.color]="selectedService?.key === svc.key ? '#fff' : svc.color"
-                      [style.border]="'2px solid ' + svc.color"
-                      style="height:72px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px"
-                      (click)="openServiceForm(svc)">
-                      <mat-icon [style.color]="selectedService?.key === svc.key ? '#fff' : svc.color">{{ svc.icon }}</mat-icon>
-                      <span style="font-size:0.75rem; font-weight:600">{{ svc.label }}</span>
-                    </button>
-                  }
-                </div>
-
-                @if (showServiceForm && selectedService) {
-                  <div style="border:1px solid #e0e0e0; border-radius:8px; padding:16px; background:#fafafa">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px">
-                      <mat-icon [style.color]="selectedService.color">{{ selectedService.icon }}</mat-icon>
-                      <strong style="font-size:1rem">{{ selectedService.label }}</strong>
-                    </div>
-                    <mat-form-field appearance="outline" style="width:100%">
-                      <mat-label>Descripción</mat-label>
-                      <input matInput [(ngModel)]="serviceName" placeholder="Ej: Impresión carta color">
-                    </mat-form-field>
-                    <div style="display:flex; gap:12px; align-items:flex-start">
-                      <mat-form-field appearance="outline" style="flex:1">
-                        <mat-label>Precio unitario (COP)</mat-label>
-                        <input matInput type="number" [(ngModel)]="servicePrice" min="1">
-                      </mat-form-field>
-                      <div style="display:flex; align-items:center; gap:8px; padding-top:12px">
-                        <button mat-icon-button (click)="serviceQty = serviceQty > 1 ? serviceQty - 1 : 1">
-                          <mat-icon>remove</mat-icon>
-                        </button>
-                        <strong style="min-width:24px; text-align:center">{{ serviceQty }}</strong>
-                        <button mat-icon-button (click)="serviceQty = serviceQty + 1">
-                          <mat-icon>add</mat-icon>
-                        </button>
+                @if (servicesLoading) {
+                  <div style="text-align:center; padding:24px">
+                    <mat-spinner diameter="32" style="margin:auto"></mat-spinner>
+                  </div>
+                } @else if (services().length === 0) {
+                  <div style="text-align:center; padding:24px; color:#888">
+                    <mat-icon style="font-size:48px; width:48px; height:48px; color:#ccc">design_services</mat-icon>
+                    <p style="margin-top:8px">No hay servicios registrados en el inventario.</p>
+                    <p style="font-size:0.8rem">Agrega servicios desde la sección de Inventario.</p>
+                  </div>
+                } @else {
+                  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px">
+                    @for (svc of services(); track svc.id) {
+                      <div
+                        [style.background]="hoveredServiceId === svc.id ? '#f3e5f5' : '#fff'"
+                        style="border:2px solid #7b1fa2; border-radius:10px; padding:12px 8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:6px; transition:background 0.15s; text-align:center"
+                        (click)="addProductToCart(svc)"
+                        (mouseenter)="hoveredServiceId = svc.id"
+                        (mouseleave)="hoveredServiceId = null">
+                        <mat-icon style="color:#7b1fa2; font-size:28px; width:28px; height:28px">design_services</mat-icon>
+                        <span style="font-size:0.82rem; font-weight:600; color:#212121; line-height:1.2">{{ svc.name }}</span>
+                        @if (svc.category) {
+                          <span style="font-size:0.7rem; color:#888">{{ svc.category }}</span>
+                        }
+                        @if (!svc.salePrice || +svc.salePrice === 0) {
+                          <span style="font-size:0.75rem; color:#ff9800; font-weight:500">Precio variable</span>
+                        } @else {
+                          <span style="font-size:0.78rem; color:#7b1fa2; font-weight:700">
+                            {{ svc.salePrice | currency:'COP':'symbol':'1.0-0' }}
+                          </span>
+                        }
                       </div>
-                    </div>
-                    <button mat-raised-button color="accent" style="width:100%"
-                      [disabled]="!serviceName.trim() || servicePrice <= 0"
-                      (click)="addService()">
-                      <mat-icon>add_shopping_cart</mat-icon>
-                      Agregar al carrito — {{ servicePrice * serviceQty | currency:'COP':'symbol':'1.0-0' }}
-                    </button>
+                    }
                   </div>
                 }
               }
@@ -518,6 +506,9 @@ export class PosComponent implements OnInit, OnDestroy {
   readonly numpadKeys = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '.', '0', 'back'];
 
   paymentMethods = signal<PaymentMethod[]>([]);
+  services = signal<Product[]>([]);
+  servicesLoading = false;
+  hoveredServiceId: string | null = null;
 
   cart: CartItem[] = [];
   serviceCart: ServiceCartItem[] = [];
@@ -577,6 +568,7 @@ export class PosComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.loadCartFromStorage();
+    this.loadServices();
     this.api.getPaymentMethods().subscribe({
       next: (pms) => {
         this.paymentMethods.set(pms);
@@ -597,6 +589,17 @@ export class PosComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.scanSub?.unsubscribe();
     if (this.nameSearchTimer) { clearTimeout(this.nameSearchTimer); }
+  }
+
+  loadServices() {
+    this.servicesLoading = true;
+    this.api.getProducts().subscribe({
+      next: (products) => {
+        this.services.set(products.filter((p) => p.type === 'service' && p.active));
+        this.servicesLoading = false;
+      },
+      error: () => { this.servicesLoading = false; },
+    });
   }
 
   setMode(mode: 'barcode' | 'name' | 'service') {

@@ -548,6 +548,21 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     xlsxWrite(wb, `ventas_${this.toIsoDate(new Date())}.xlsx`);
   }
 
+  private loadImageAsBase64(src: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d')!.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
   async exportPdf() {
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
@@ -556,17 +571,28 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     const pageW = doc.internal.pageSize.getWidth();
     const now = new Date();
 
+    const logoDataUrl = await this.loadImageAsBase64('assets/logo.png');
+
     // Header
+    const headerH = 32;
     doc.setFillColor(63, 81, 181);
-    doc.rect(0, 0, pageW, 28, 'F');
+    doc.rect(0, 0, pageW, headerH, 'F');
+
+    if (logoDataUrl) {
+      // White rounded box for the logo
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(pageW - 34, 3, 28, 26, 2, 2, 'F');
+      doc.addImage(logoDataUrl, 'PNG', pageW - 33, 4, 26, 24);
+    }
+
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(18);
+    doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('Impresiones Colina Real', 14, 12);
+    doc.text('Impresiones Colina Real', 14, 13);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text('Reporte de Ventas', 14, 20);
-    doc.text(`Generado: ${now.toLocaleString('es-CO')}`, pageW - 14, 20, { align: 'right' });
+    doc.text('Reporte de Ventas', 14, 22);
+    doc.text(`Generado: ${now.toLocaleString('es-CO')}`, logoDataUrl ? pageW - 38 : pageW - 14, 22, { align: 'right' });
 
     // Período
     const { start, end } = this.rangeForm.value;
@@ -575,7 +601,7 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Período: ${fromLabel} — ${toLabel}`, 14, 36);
+    doc.text(`Período: ${fromLabel} — ${toLabel}`, 14, 40);
 
     // Resumen
     const s = this.summary();
@@ -583,11 +609,11 @@ export class ReportsComponent implements OnInit, AfterViewInit {
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       const formatCOP = (v: number) => `$${v.toLocaleString('es-CO')}`;
-      doc.text(`Total ingresos: ${formatCOP(s.totalRevenue)}`, 14, 44);
-      doc.text(`Transacciones: ${s.totalTransactions}`, 80, 44);
+      doc.text(`Total ingresos: ${formatCOP(s.totalRevenue)}`, 14, 48);
+      doc.text(`Transacciones: ${s.totalTransactions}`, 80, 48);
       doc.text(
         `Ticket promedio: ${s.totalTransactions > 0 ? formatCOP(s.totalRevenue / s.totalTransactions) : '—'}`,
-        140, 44,
+        140, 48,
       );
 
       // Resumen por método de pago
@@ -597,9 +623,9 @@ export class ReportsComponent implements OnInit, AfterViewInit {
       if (pmRows.length > 0) {
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
-        doc.text('Por medio de pago', 14, 54);
+        doc.text('Por medio de pago', 14, 58);
         autoTable(doc, {
-          startY: 57,
+          startY: 61,
           head: [['Medio', 'Transacciones', 'Total']],
           body: pmRows,
           theme: 'striped',
@@ -617,9 +643,9 @@ export class ReportsComponent implements OnInit, AfterViewInit {
       if (catRows.length > 0) {
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
-        doc.text('Por categoría (top 10)', 115, 54);
+        doc.text('Por categoría (top 10)', 115, 58);
         autoTable(doc, {
-          startY: 57,
+          startY: 61,
           head: [['Categoría', 'Unidades', 'Total']],
           body: catRows,
           theme: 'striped',
