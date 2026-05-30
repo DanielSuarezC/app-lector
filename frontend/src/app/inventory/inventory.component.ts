@@ -67,15 +67,22 @@ import { Product, Category, ItemType, SoldBy } from '../models/product.model';
       </div>
 
       <!-- Alertas de bajo stock -->
-      @if (lowStockProducts().length > 0) {
+      @if (lowStockProducts().length > 0 || lowStockVariants().length > 0) {
         <mat-card style="margin-bottom:16px; border-left: 4px solid #ff5722">
           <mat-card-header>
             <mat-icon mat-card-avatar style="color:#ff5722">warning</mat-icon>
-            <mat-card-title>{{ lowStockProducts().length }} producto(s) con stock bajo</mat-card-title>
+            <mat-card-title>
+              {{ lowStockProducts().length + lowStockVariants().length }} ítem(s) con stock bajo
+            </mat-card-title>
           </mat-card-header>
-          <mat-card-content>
+          <mat-card-content style="display:flex; flex-wrap:wrap; gap:6px; padding-top:8px">
             @for (p of lowStockProducts(); track p.id) {
               <mat-chip color="warn">{{ p.name }} — Stock: {{ p.stock }}</mat-chip>
+            }
+            @for (v of lowStockVariants(); track v.productName + v.variantLabel) {
+              <mat-chip color="warn">
+                {{ v.productName }} ({{ v.variantLabel }}) — Stock: {{ v.stock }}
+              </mat-chip>
             }
           </mat-card-content>
         </mat-card>
@@ -502,6 +509,7 @@ export class InventoryComponent implements OnInit, OnDestroy {
 
   products = signal<Product[]>([]);
   lowStockProducts = signal<Product[]>([]);
+  lowStockVariants = signal<Array<{ productName: string; variantLabel: string; stock: number }>>([]);
   allCategories = signal<Category[]>([]);
   filteredCategories = signal<Category[]>([]);
   loading = signal(true);
@@ -640,9 +648,30 @@ export class InventoryComponent implements OnInit, OnDestroy {
       next: (products) => {
         this.products.set(products);
         this.loading.set(false);
+        // Products without variants: alert when stock <= minStock
         this.lowStockProducts.set(
-          products.filter((p) => p.trackInventory && p.type === 'product' && p.stock <= p.minStock),
+          products.filter(
+            (p) => p.trackInventory && p.type === 'product' &&
+                   (!p.variants || p.variants.length === 0) &&
+                   p.stock <= p.minStock,
+          ),
         );
+        // Products with variants: alert per variant when stock <= minStock
+        const lowVariants: Array<{ productName: string; variantLabel: string; stock: number }> = [];
+        for (const p of products) {
+          if (p.trackInventory && p.type === 'product' && p.variants?.length) {
+            for (const v of p.variants) {
+              if ((v.stock ?? 0) <= (v.minStock ?? 0)) {
+                lowVariants.push({
+                  productName: p.name,
+                  variantLabel: `${v.optionName}: ${v.optionValue}`,
+                  stock: v.stock ?? 0,
+                });
+              }
+            }
+          }
+        }
+        this.lowStockVariants.set(lowVariants);
       },
       error: () => this.loading.set(false),
     });

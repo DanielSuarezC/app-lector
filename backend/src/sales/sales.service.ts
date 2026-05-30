@@ -18,9 +18,8 @@ export class SalesService {
   ) {}
 
   private generateTransactionNumber(): string {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `CR${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${Date.now().toString().slice(-6)}`;
+    const colDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    return `CR${colDate.replace(/-/g, '')}-${Date.now().toString().slice(-6)}`;
   }
 
   async create(dto: CreateSaleDto): Promise<Sale> {
@@ -131,9 +130,12 @@ export class SalesService {
 
   findAll(from?: string, to?: string): Promise<Sale[]> {
     if (from && to) {
-      // Parse as local time so the filter aligns with the server clock (same as getDailySummary)
-      const fromDate = new Date(`${from}T00:00:00`);
-      const toDate = new Date(`${to}T23:59:59.999`);
+      // Colombia is permanently UTC-5 (no DST).
+      // Midnight Bogotá = UTC+5h; end of day Bogotá = next day UTC 04:59:59.999
+      const [fy, fm, fd] = from.split('-').map(Number);
+      const [ty, tm, td] = to.split('-').map(Number);
+      const fromDate = new Date(Date.UTC(fy, fm - 1, fd, 5, 0, 0, 0));
+      const toDate = new Date(Date.UTC(ty, tm - 1, td + 1, 4, 59, 59, 999));
       return this.saleRepo.find({
         where: { createdAt: Between(fromDate, toDate) },
         order: { createdAt: 'DESC' },
@@ -143,13 +145,14 @@ export class SalesService {
   }
 
   async getDailySummary(): Promise<{ date: string; total: number; count: number }> {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    const todayCol = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const [y, m, d] = todayCol.split('-').map(Number);
+    // Colombia UTC-5: midnight = UTC 05:00, end of day = next day UTC 04:59:59.999
+    const start = new Date(Date.UTC(y, m - 1, d, 5, 0, 0, 0));
+    const end = new Date(Date.UTC(y, m - 1, d + 1, 4, 59, 59, 999));
     const sales = await this.saleRepo.find({ where: { createdAt: Between(start, end) } });
     return {
-      date: start.toISOString().split('T')[0],
+      date: todayCol,
       total: sales.reduce((acc, s) => acc + Number(s.total), 0),
       count: sales.length,
     };
@@ -174,7 +177,7 @@ export class SalesService {
       byPaymentMethod[pm].count++;
       byPaymentMethod[pm].total += Number(sale.total);
 
-      const day = sale.createdAt.toISOString().split('T')[0];
+      const day = sale.createdAt.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
       if (!dailyMap[day]) dailyMap[day] = { total: 0, count: 0 };
       dailyMap[day].total += Number(sale.total);
       dailyMap[day].count++;
