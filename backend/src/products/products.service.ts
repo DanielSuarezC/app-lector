@@ -83,7 +83,10 @@ export class ProductsService {
   findLowStock(): Promise<Product[]> {
     return this.repo
       .createQueryBuilder('p')
+      .leftJoin('p.variants', 'v')
       .where('p.stock <= p.minStock AND p.active = true AND p.trackInventory = true')
+      .groupBy('p.id')
+      .having('COUNT(v.id) = 0')
       .orderBy('p.stock', 'ASC')
       .getMany();
   }

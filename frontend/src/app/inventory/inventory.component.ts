@@ -661,7 +661,7 @@ export class InventoryComponent implements OnInit, OnDestroy {
         for (const p of products) {
           if (p.trackInventory && p.type === 'product' && p.variants?.length) {
             for (const v of p.variants) {
-              if ((v.stock ?? 0) <= (v.minStock ?? 0)) {
+              if ((v.minStock ?? 0) > 0 && (v.stock ?? 0) <= (v.minStock ?? 0)) {
                 lowVariants.push({
                   productName: p.name,
                   variantLabel: `${v.optionName}: ${v.optionValue}`,
